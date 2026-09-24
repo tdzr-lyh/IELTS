@@ -1,7 +1,7 @@
 {
-  "name": "双考航线 · 雅思与六级每日清单",
-  "short_name": "双考航线",
-  "description": "雅思与大学英语六级双考试每日学习清单。",
+  "name": "听力练习书 · IELTS Listening",
+  "short_name": "听力练习书",
+  "description": "从个人雅思听力资料中自主领取词汇、听写和听音辨义测试。",
   "id": "./",
   "start_url": "./",
   "scope": "./",
