@@ -1,8 +1,11 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "listening-practice-book-v1";
+  const LEGACY_PROGRESS_KEY = "listening-practice-book-v1";
   const LEGACY_KEY = "dual-exam-flight-v2";
+  const ACCOUNT_STORE_KEY = "listening-practice-book-accounts-v1";
+  const ACCOUNT_SESSION_KEY = "listening-practice-book-session-v1";
+  const ACCOUNT_PROGRESS_PREFIX = "listening-practice-book-progress-v1:";
   const library = window.LISTENING_LIBRARY || {
     sceneCategories: [],
     jijingCategories: [],
@@ -18,6 +21,8 @@
     toastTimer: null,
     deferredInstallPrompt: null,
     audioTrackId: "",
+    selectedAccountId: "",
+    accountDialogRequired: false,
   };
 
   let audio;
@@ -30,7 +35,9 @@
   const orderedTracks = orderTracks(library.dictationTracks || []);
   const totalWords = allWords.length;
 
-  let state = loadState();
+  let state = defaultState();
+  let accountStore = loadAccountStore();
+  let activeAccount = null;
 
   function flattenCategories(categories, group) {
     return categories.flatMap((category, categoryIndex) =>
@@ -104,9 +111,41 @@
     };
   }
 
-  function loadState() {
+  function defaultAccountStore() {
+    return {
+      version: 1,
+      activeAccountId: "",
+      legacyMigrated: false,
+      accounts: {},
+    };
+  }
+
+  function loadAccountStore() {
     try {
-      const current = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(ACCOUNT_STORE_KEY);
+      if (!raw) return defaultAccountStore();
+      const parsed = JSON.parse(raw);
+      return {
+        ...defaultAccountStore(),
+        ...parsed,
+        accounts: parsed.accounts || {},
+      };
+    } catch {
+      return defaultAccountStore();
+    }
+  }
+
+  function saveAccountStore() {
+    localStorage.setItem(ACCOUNT_STORE_KEY, JSON.stringify(accountStore));
+  }
+
+  function progressKey(accountId) {
+    return `${ACCOUNT_PROGRESS_PREFIX}${accountId}`;
+  }
+
+  function loadLegacyState() {
+    try {
+      const current = localStorage.getItem(LEGACY_PROGRESS_KEY);
       if (current) return normalizeState(JSON.parse(current));
 
       const legacyRaw = localStorage.getItem(LEGACY_KEY);
@@ -122,12 +161,147 @@
     }
   }
 
+  function loadStateForAccount(accountId) {
+    try {
+      const raw = localStorage.getItem(progressKey(accountId));
+      return raw ? normalizeState(JSON.parse(raw)) : defaultState();
+    } catch {
+      return defaultState();
+    }
+  }
+
   function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (!activeAccount) return;
+    localStorage.setItem(progressKey(activeAccount.id), JSON.stringify(state));
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return btoa(binary);
+  }
+
+  function base64ToBytes(value) {
+    return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+  }
+
+  function createSalt() {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return bytesToBase64(bytes);
+  }
+
+  async function hashPassword(password, salt) {
+    const material = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"],
+    );
+    const bits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: base64ToBytes(salt),
+        iterations: 120000,
+        hash: "SHA-256",
+      },
+      material,
+      256,
+    );
+    return bytesToBase64(new Uint8Array(bits));
+  }
+
+  function accountInitial(name) {
+    return String(name || "我").trim().slice(0, 1).toUpperCase() || "我";
+  }
+
+  function accountId() {
+    return crypto.randomUUID
+      ? `account-${crypto.randomUUID()}`
+      : `account-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function accountList() {
+    return Object.values(accountStore.accounts).sort((a, b) =>
+      String(b.lastLoginAt || b.createdAt).localeCompare(String(a.lastLoginAt || a.createdAt)),
+    );
+  }
+
+  function formatAccountTime(value) {
+    if (!value) return "尚未登录";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "本机账号";
+    return `${date.getMonth() + 1}月${date.getDate()}日登录`;
+  }
+
+  async function verifyAccountPassword(account, password) {
+    if (!account || !password) return false;
+    const hash = await hashPassword(password, account.salt);
+    return hash === account.passwordHash;
+  }
+
+  function activateAccount(account, { rememberSession = true } = {}) {
+    if (!account) return;
+    activeAccount = account;
+    account.lastLoginAt = new Date().toISOString();
+    accountStore.accounts[account.id] = account;
+    accountStore.activeAccountId = account.id;
+    saveAccountStore();
+    if (rememberSession) sessionStorage.setItem(ACCOUNT_SESSION_KEY, account.id);
+    state = loadStateForAccount(account.id);
+    runtime.selectedAccountId = account.id;
+    runtime.accountDialogRequired = false;
+    closeAudio();
+    renderAccountHeader();
+    renderAccountDialog();
+    renderAll();
+    if (dom.accountDialog.open) dom.accountDialog.close();
+  }
+
+  function lockCurrentAccount() {
+    sessionStorage.removeItem(ACCOUNT_SESSION_KEY);
+    activeAccount = null;
+    state = defaultState();
+    runtime.accountDialogRequired = true;
+    runtime.selectedAccountId = accountStore.activeAccountId || accountList()[0]?.id || "";
+    closeAudio();
+    renderAccountHeader();
+    renderAll();
+    openAccountDialog({ required: true });
   }
 
   function cacheDom() {
     [
+      "accountButton",
+      "accountAvatar",
+      "currentAccountName",
+      "accountDialog",
+      "accountDialogClose",
+      "accountList",
+      "accountLoginForm",
+      "loginAccountAvatar",
+      "loginAccountName",
+      "accountLoginPassword",
+      "accountLoginMessage",
+      "accountLoginSubmit",
+      "accountCreateDetails",
+      "accountCreateForm",
+      "newAccountName",
+      "newAccountPassword",
+      "newAccountPasswordConfirm",
+      "accountCreateMessage",
+      "accountCreateSubmit",
+      "accountPasswordDetails",
+      "accountPasswordForm",
+      "oldAccountPassword",
+      "changedAccountPassword",
+      "changedAccountPasswordConfirm",
+      "accountPasswordMessage",
+      "accountPasswordSubmit",
+      "accountLockButton",
       "installButton",
       "exportButton",
       "importButton",
@@ -227,6 +401,190 @@
     dom.toast.textContent = message;
     dom.toast.classList.add("is-visible");
     runtime.toastTimer = setTimeout(() => dom.toast.classList.remove("is-visible"), 2500);
+  }
+
+  function renderAccountHeader() {
+    const name = activeAccount?.name || "未登录";
+    dom.currentAccountName.textContent = name;
+    dom.accountAvatar.textContent = accountInitial(name);
+    dom.accountButton.setAttribute(
+      "aria-label",
+      activeAccount ? `当前账号 ${name}，点击切换账号` : "点击选择学习账号",
+    );
+  }
+
+  function renderAccountDialog() {
+    const accounts = accountList();
+    const selected = accountStore.accounts[runtime.selectedAccountId];
+    dom.accountDialogClose.hidden = !activeAccount || runtime.accountDialogRequired;
+    dom.accountLockButton.hidden = !activeAccount;
+    dom.accountPasswordDetails.hidden = !activeAccount;
+    dom.accountCreateDetails.open = accounts.length === 0;
+
+    dom.accountList.innerHTML = accounts.length
+      ? accounts
+          .map(
+            (account) => `
+              <button
+                class="account-card ${
+                  account.id === runtime.selectedAccountId ? "is-selected" : ""
+                } ${account.id === activeAccount?.id ? "is-current" : ""}"
+                type="button"
+                data-account-id="${escapeHtml(account.id)}"
+              >
+                <span class="account-card__avatar">${escapeHtml(accountInitial(account.name))}</span>
+                <span class="account-card__copy">
+                  <strong>${escapeHtml(account.name)}</strong>
+                  <small>${escapeHtml(formatAccountTime(account.lastLoginAt))}</small>
+                </span>
+                ${
+                  account.id === activeAccount?.id
+                    ? '<span class="account-card__badge">当前</span>'
+                    : ""
+                }
+              </button>
+            `,
+          )
+          .join("")
+      : '<p class="account-list__empty">还没有账号。请在下方创建第一个学习账号，现有进度会自动迁移进去。</p>';
+
+    dom.accountLoginForm.hidden = !selected || selected.id === activeAccount?.id;
+    if (selected && selected.id !== activeAccount?.id) {
+      dom.loginAccountAvatar.textContent = accountInitial(selected.name);
+      dom.loginAccountName.textContent = selected.name;
+    }
+  }
+
+  function openAccountDialog({ required = false } = {}) {
+    runtime.accountDialogRequired = required || !activeAccount;
+    if (!runtime.selectedAccountId) {
+      runtime.selectedAccountId =
+        accountStore.activeAccountId || activeAccount?.id || accountList()[0]?.id || "";
+    }
+    dom.accountLoginPassword.value = "";
+    dom.accountLoginMessage.textContent = "";
+    dom.accountCreateMessage.textContent = "";
+    dom.accountPasswordMessage.textContent = "";
+    renderAccountDialog();
+    if (!dom.accountDialog.open) dom.accountDialog.showModal();
+  }
+
+  async function createAccount(event) {
+    event.preventDefault();
+    const name = dom.newAccountName.value.trim();
+    const password = dom.newAccountPassword.value;
+    const confirmation = dom.newAccountPasswordConfirm.value;
+    dom.accountCreateMessage.textContent = "";
+
+    if (name.length < 1) {
+      dom.accountCreateMessage.textContent = "请输入账号名称。";
+      return;
+    }
+    if (accountList().some((account) => account.name.toLowerCase() === name.toLowerCase())) {
+      dom.accountCreateMessage.textContent = "这个账号名称已经存在。";
+      return;
+    }
+    if (password.length < 4) {
+      dom.accountCreateMessage.textContent = "密码至少需要 4 位。";
+      return;
+    }
+    if (password !== confirmation) {
+      dom.accountCreateMessage.textContent = "两次输入的密码不一致。";
+      return;
+    }
+
+    dom.accountCreateSubmit.disabled = true;
+    dom.accountCreateSubmit.textContent = "正在创建…";
+    try {
+      const salt = createSalt();
+      const account = {
+        id: accountId(),
+        name,
+        nameKey: name.toLowerCase(),
+        salt,
+        passwordHash: await hashPassword(password, salt),
+        createdAt: new Date().toISOString(),
+        lastLoginAt: "",
+      };
+      const isFirstAccount = accountList().length === 0;
+      accountStore.accounts[account.id] = account;
+
+      if (isFirstAccount && !accountStore.legacyMigrated) {
+        localStorage.setItem(progressKey(account.id), JSON.stringify(loadLegacyState()));
+        accountStore.legacyMigrated = true;
+      } else {
+        localStorage.setItem(progressKey(account.id), JSON.stringify(defaultState()));
+      }
+      saveAccountStore();
+      dom.accountCreateForm.reset();
+      activateAccount(account);
+      showToast(isFirstAccount ? "账号已创建，原有进度已迁移" : "新账号已创建");
+    } catch (error) {
+      console.error("Account creation failed:", error);
+      dom.accountCreateMessage.textContent = "当前浏览器无法安全保存密码，请换用 Chrome 或 Safari。";
+    } finally {
+      dom.accountCreateSubmit.disabled = false;
+      dom.accountCreateSubmit.textContent = "创建并进入";
+    }
+  }
+
+  async function loginAccount(event) {
+    event.preventDefault();
+    const account = accountStore.accounts[runtime.selectedAccountId];
+    if (!account) return;
+    dom.accountLoginMessage.textContent = "";
+    dom.accountLoginSubmit.disabled = true;
+    dom.accountLoginSubmit.textContent = "正在验证…";
+    try {
+      const valid = await verifyAccountPassword(account, dom.accountLoginPassword.value);
+      if (!valid) {
+        dom.accountLoginMessage.textContent = "密码不正确，请重新输入。";
+        dom.accountLoginPassword.select();
+        return;
+      }
+      activateAccount(account);
+      showToast(`已切换到“${account.name}”`);
+    } catch (error) {
+      console.error("Account login failed:", error);
+      dom.accountLoginMessage.textContent = "密码验证失败，请刷新后重试。";
+    } finally {
+      dom.accountLoginSubmit.disabled = false;
+      dom.accountLoginSubmit.textContent = "进入账号";
+    }
+  }
+
+  async function changeAccountPassword(event) {
+    event.preventDefault();
+    if (!activeAccount) return;
+    const oldPassword = dom.oldAccountPassword.value;
+    const nextPassword = dom.changedAccountPassword.value;
+    const confirmation = dom.changedAccountPasswordConfirm.value;
+    dom.accountPasswordMessage.textContent = "";
+    if (!(await verifyAccountPassword(activeAccount, oldPassword))) {
+      dom.accountPasswordMessage.textContent = "原密码不正确。";
+      return;
+    }
+    if (nextPassword.length < 4) {
+      dom.accountPasswordMessage.textContent = "新密码至少需要 4 位。";
+      return;
+    }
+    if (nextPassword !== confirmation) {
+      dom.accountPasswordMessage.textContent = "两次输入的新密码不一致。";
+      return;
+    }
+    dom.accountPasswordSubmit.disabled = true;
+    try {
+      const salt = createSalt();
+      activeAccount.salt = salt;
+      activeAccount.passwordHash = await hashPassword(nextPassword, salt);
+      accountStore.accounts[activeAccount.id] = activeAccount;
+      saveAccountStore();
+      dom.accountPasswordForm.reset();
+      dom.accountPasswordDetails.open = false;
+      showToast("当前账号密码已更新");
+    } finally {
+      dom.accountPasswordSubmit.disabled = false;
+    }
   }
 
   function wordLabel(entry) {
@@ -1072,8 +1430,13 @@
   }
 
   function exportProgress() {
+    if (!activeAccount) {
+      openAccountDialog({ required: true });
+      return;
+    }
     const payload = {
       app: "听力练习书",
+      accountName: activeAccount.name,
       exportedAt: new Date().toISOString(),
       state,
     };
@@ -1081,7 +1444,8 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `听力练习书进度-${new Date().toISOString().slice(0, 10)}.json`;
+    const safeName = activeAccount.name.replace(/[\\/:*?"<>|]/g, "-");
+    link.download = `听力练习书-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     URL.revokeObjectURL(url);
     showToast("进度备份已下载");
@@ -1104,6 +1468,29 @@
   }
 
   function bindEvents() {
+    dom.accountButton.addEventListener("click", () => openAccountDialog());
+    dom.accountDialogClose.addEventListener("click", () => {
+      if (activeAccount && !runtime.accountDialogRequired) dom.accountDialog.close();
+    });
+    dom.accountDialog.addEventListener("cancel", (event) => {
+      if (!activeAccount || runtime.accountDialogRequired) event.preventDefault();
+    });
+    dom.accountList.addEventListener("click", (event) => {
+      const card = event.target.closest("[data-account-id]");
+      if (!card) return;
+      runtime.selectedAccountId = card.dataset.accountId;
+      dom.accountLoginPassword.value = "";
+      dom.accountLoginMessage.textContent = "";
+      renderAccountDialog();
+      if (!dom.accountLoginForm.hidden) {
+        window.setTimeout(() => dom.accountLoginPassword.focus(), 50);
+      }
+    });
+    dom.accountLoginForm.addEventListener("submit", loginAccount);
+    dom.accountCreateForm.addEventListener("submit", createAccount);
+    dom.accountPasswordForm.addEventListener("submit", changeAccountPassword);
+    dom.accountLockButton.addEventListener("click", lockCurrentAccount);
+
     dom.packSize.addEventListener("change", () => {
       state.settings.packSize = Number(dom.packSize.value) || 15;
       saveState();
@@ -1269,7 +1656,13 @@
       dom.importFileInput.value = "";
     });
     dom.resetButton.addEventListener("click", () => {
-      if (!window.confirm("确定清空全部学习进度吗？此操作不可撤销。")) return;
+      if (!activeAccount) return;
+      if (
+        !window.confirm(
+          `确定清空账号“${activeAccount.name}”的全部学习进度吗？其他账号不会受影响。`,
+        )
+      )
+        return;
       state = defaultState();
       saveState();
       renderAll();
@@ -1295,7 +1688,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=21").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=22").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
@@ -1307,10 +1700,26 @@
     audio.preload = "metadata";
     audio.playbackRate = 1;
     audio.defaultPlaybackRate = 1;
+    const sessionAccountId = sessionStorage.getItem(ACCOUNT_SESSION_KEY);
+    const sessionAccount = accountStore.accounts[sessionAccountId];
+    if (sessionAccount) {
+      activeAccount = sessionAccount;
+      state = loadStateForAccount(sessionAccount.id);
+      runtime.selectedAccountId = sessionAccount.id;
+    } else {
+      runtime.selectedAccountId =
+        accountStore.activeAccountId || accountList()[0]?.id || "";
+      runtime.accountDialogRequired = true;
+    }
     bindEvents();
+    renderAccountHeader();
+    renderAccountDialog();
     renderAll();
     registerServiceWorker();
     if ("speechSynthesis" in window) window.speechSynthesis.getVoices();
+    if (!activeAccount) {
+      window.requestAnimationFrame(() => openAccountDialog({ required: true }));
+    }
   }
 
   if (document.readyState === "loading") {
