@@ -6,6 +6,7 @@
   const ACCOUNT_STORE_KEY = "listening-practice-book-accounts-v1";
   const ACCOUNT_SESSION_KEY = "listening-practice-book-session-v1";
   const ACCOUNT_PROGRESS_PREFIX = "listening-practice-book-progress-v1:";
+  const cloudConfig = window.LISTENING_CLOUD || {};
   const library = window.LISTENING_LIBRARY || {
     sceneCategories: [],
     jijingCategories: [],
@@ -23,9 +24,17 @@
     audioTrackId: "",
     selectedAccountId: "",
     accountDialogRequired: false,
+    cloudUser: null,
+    cloudSyncTimer: null,
+    cloudSyncRevision: 0,
+    cloudDirty: false,
+    cloudRefreshInFlight: false,
+    pronunciationToken: 0,
   };
 
   let audio;
+  let wordAudio;
+  let cloudClient = null;
 
   const sceneWords = flattenCategories(library.sceneCategories || [], "scene");
   const jijingWords = flattenCategories(library.jijingCategories || [], "jijing");
@@ -38,6 +47,21 @@
   let state = defaultState();
   let accountStore = loadAccountStore();
   let activeAccount = null;
+
+  function cloudIsConfigured() {
+    return Boolean(
+      cloudConfig.provider === "supabase" &&
+        cloudConfig.url &&
+        cloudConfig.anonKey &&
+        window.supabase?.createClient,
+    );
+  }
+
+  function initCloudClient() {
+    if (!cloudIsConfigured()) return null;
+    if (!cloudClient) cloudClient = window.supabase.createClient(cloudConfig.url, cloudConfig.anonKey);
+    return cloudClient;
+  }
 
   function flattenCategories(categories, group) {
     return categories.flatMap((category, categoryIndex) =>
@@ -173,6 +197,201 @@
   function saveState() {
     if (!activeAccount) return;
     localStorage.setItem(progressKey(activeAccount.id), JSON.stringify(state));
+    scheduleCloudSync();
+  }
+
+  function scheduleCloudSync() {
+    if (!activeAccount?.cloud || !runtime.cloudUser || !cloudClient) return;
+    runtime.cloudDirty = true;
+    runtime.cloudSyncRevision += 1;
+    clearTimeout(runtime.cloudSyncTimer);
+    runtime.cloudSyncTimer = setTimeout(() => syncStateToCloud(), 650);
+  }
+
+  async function syncStateToCloud() {
+    if (!activeAccount?.cloud || !runtime.cloudUser || !cloudClient) return;
+    runtime.cloudDirty = true;
+    const revision = runtime.cloudSyncRevision;
+    updateCloudStatus("syncing", "正在同步最新学习进度…");
+    const { error } = await cloudClient.from("learning_states").upsert(
+      {
+        user_id: runtime.cloudUser.id,
+        account_name: activeAccount.name,
+        state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+    if (error) {
+      console.warn("Cloud sync failed:", error.message);
+      updateCloudStatus("sync-error", "云端同步失败，当前进度仍保存在本机");
+    } else {
+      if (revision === runtime.cloudSyncRevision) runtime.cloudDirty = false;
+      updateCloudStatus("ready", "已同步到云端");
+    }
+  }
+
+  async function loadStateFromCloud(user, fallback = null) {
+    if (!cloudClient) return fallback || defaultState();
+    const { data, error } = await cloudClient
+      .from("learning_states")
+      .select("account_name,state,updated_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (error) {
+      console.warn("Cloud load failed:", error.message);
+      updateCloudStatus("sync-error", "暂时无法读取云端，已使用本机缓存");
+      return fallback || defaultState();
+    }
+    return data?.state ? normalizeState(data.state) : fallback || defaultState();
+  }
+
+  async function refreshStateFromCloud({ notify = false } = {}) {
+    if (
+      !activeAccount?.cloud ||
+      !runtime.cloudUser ||
+      !cloudClient ||
+      runtime.cloudDirty ||
+      runtime.cloudRefreshInFlight
+    )
+      return;
+    runtime.cloudRefreshInFlight = true;
+    try {
+      const { data, error } = await cloudClient
+        .from("learning_states")
+        .select("state,updated_at")
+        .eq("user_id", runtime.cloudUser.id)
+        .maybeSingle();
+      if (error) {
+        updateCloudStatus("sync-error", "云端刷新失败，当前仍可继续学习");
+        return;
+      }
+      if (data?.state) {
+        const remoteState = normalizeState(data.state);
+        if (JSON.stringify(remoteState) !== JSON.stringify(state)) {
+          state = remoteState;
+          localStorage.setItem(progressKey(activeAccount.id), JSON.stringify(state));
+          renderAll();
+          if (notify) showToast("已读取其他设备上的最新进度");
+        }
+      }
+      updateCloudStatus("ready", "已连接云端，进度会自动同步");
+    } finally {
+      runtime.cloudRefreshInFlight = false;
+    }
+  }
+
+  function cloudHashName(name) {
+    let hash = 2166136261;
+    for (const char of String(name).trim().toLowerCase()) {
+      hash ^= char.codePointAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function cloudEmailForName(name) {
+    return `account-${cloudHashName(name)}@ielts-practice.local`;
+  }
+
+  function updateCloudStatus(kind, text) {
+    if (!dom.cloudStatus || !dom.cloudStatusText) return;
+    dom.cloudStatus.className = `cloud-status is-${kind}`;
+    dom.cloudStatusText.textContent = text;
+  }
+
+  async function activateCloudAccount(user, name, { stateOverride = null } = {}) {
+    activeAccount = {
+      id: `cloud-${user.id}`,
+      cloud: true,
+      userId: user.id,
+      name: name || user.user_metadata?.display_name || "云端账号",
+      createdAt: user.created_at || new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+    };
+    runtime.cloudUser = user;
+    accountStore.activeAccountId = activeAccount.id;
+    saveAccountStore();
+    sessionStorage.setItem(ACCOUNT_SESSION_KEY, activeAccount.id);
+    const cachedState = loadStateForAccount(activeAccount.id);
+    state = stateOverride || (await loadStateFromCloud(user, cachedState));
+    localStorage.setItem(progressKey(activeAccount.id), JSON.stringify(state));
+    runtime.cloudDirty = false;
+    runtime.accountDialogRequired = false;
+    runtime.selectedAccountId = activeAccount.id;
+    closeAudio();
+    renderAccountHeader();
+    renderAccountDialog();
+    renderAll();
+    if (dom.accountDialog.open) dom.accountDialog.close();
+    updateCloudStatus("ready", "已连接云端，进度会自动同步");
+  }
+
+  async function restoreCloudSession() {
+    const client = initCloudClient();
+    if (!client) return false;
+    const { data, error } = await client.auth.getSession();
+    if (error || !data.session?.user) return false;
+    const user = data.session.user;
+    const name = user.user_metadata?.display_name || "云端账号";
+    await activateCloudAccount(user, name);
+    return true;
+  }
+
+  async function cloudLogin(event) {
+    event.preventDefault();
+    const name = dom.cloudLoginName.value.trim();
+    const password = dom.cloudLoginPassword.value;
+    dom.cloudLoginMessage.textContent = "";
+    if (!cloudIsConfigured()) {
+      dom.cloudLoginMessage.textContent = "云端同步尚未配置，请先完成一次 Supabase 配置。";
+      updateCloudStatus("offline", "尚未配置云端同步");
+      return;
+    }
+    if (!name || password.length < 4) {
+      dom.cloudLoginMessage.textContent = "请输入账号名称和至少 4 位密码。";
+      return;
+    }
+    const client = initCloudClient();
+    dom.cloudLoginSubmit.disabled = true;
+    dom.cloudLoginSubmit.textContent = "正在登录…";
+    try {
+      const { data, error } = await client.auth.signInWithPassword({
+        email: cloudEmailForName(name),
+        password,
+      });
+      if (error || !data.user) {
+        dom.cloudLoginMessage.textContent = "账号名或密码不正确。";
+        return;
+      }
+      await activateCloudAccount(data.user, name);
+      dom.cloudLoginForm.reset();
+      showToast(`已登录“${name}”，进度已同步`);
+    } catch (error) {
+      console.error("Cloud login failed:", error);
+      dom.cloudLoginMessage.textContent = "登录失败，请检查网络后重试。";
+    } finally {
+      dom.cloudLoginSubmit.disabled = false;
+      dom.cloudLoginSubmit.textContent = "登录账号";
+    }
+  }
+
+  async function signUpCloudAccount(name, password) {
+    const client = initCloudClient();
+    const { data, error } = await client.auth.signUp({
+      email: cloudEmailForName(name),
+      password,
+      options: { data: { display_name: name } },
+    });
+    if (error) throw error;
+    if (!data.user) throw new Error("注册没有返回用户");
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      throw new Error("这个账号名称已注册，请使用上方的“登录已有账号”。");
+    }
+    if (!data.session) {
+      throw new Error("注册成功，但项目开启了邮箱确认。请在 Supabase 中关闭邮箱确认后再试。");
+    }
+    return data;
   }
 
   function bytesToBase64(bytes) {
@@ -261,7 +480,14 @@
     if (dom.accountDialog.open) dom.accountDialog.close();
   }
 
-  function lockCurrentAccount() {
+  async function lockCurrentAccount() {
+    if (activeAccount?.cloud && cloudClient) {
+      clearTimeout(runtime.cloudSyncTimer);
+      await syncStateToCloud();
+      await cloudClient.auth.signOut();
+      runtime.cloudUser = null;
+      runtime.cloudDirty = false;
+    }
     sessionStorage.removeItem(ACCOUNT_SESSION_KEY);
     activeAccount = null;
     state = defaultState();
@@ -281,6 +507,13 @@
       "accountDialog",
       "accountDialogClose",
       "accountList",
+      "cloudStatus",
+      "cloudStatusText",
+      "cloudLoginForm",
+      "cloudLoginName",
+      "cloudLoginPassword",
+      "cloudLoginMessage",
+      "cloudLoginSubmit",
       "accountLoginForm",
       "loginAccountAvatar",
       "loginAccountName",
@@ -362,6 +595,7 @@
       "quizNextButton",
       "audioDock",
       "trainingAudio",
+      "wordPronunciationAudio",
       "audioPlayButton",
       "audioTitle",
       "audioSeek",
@@ -418,11 +652,36 @@
     const selected = accountStore.accounts[runtime.selectedAccountId];
     dom.accountDialogClose.hidden = !activeAccount || runtime.accountDialogRequired;
     dom.accountLockButton.hidden = !activeAccount;
-    dom.accountPasswordDetails.hidden = !activeAccount;
+    dom.accountPasswordDetails.hidden = !activeAccount || Boolean(activeAccount.cloud);
+    dom.cloudLoginForm.hidden = false;
+    dom.cloudLoginSubmit.disabled = !cloudIsConfigured();
+    dom.accountCreateSubmit.textContent = cloudIsConfigured() ? "注册并进入" : "创建并进入";
+    if (cloudIsConfigured()) {
+      updateCloudStatus(
+        activeAccount?.cloud ? "ready" : "available",
+        activeAccount?.cloud ? "已连接云端，进度会自动同步" : "云端已就绪，可登录或注册同步账号",
+      );
+    } else {
+      updateCloudStatus("offline", "当前为本机账号模式；配置云端后即可跨浏览器同步");
+      dom.cloudLoginMessage.textContent = "云端同步尚未启用；登录入口会保留，配置完成后即可使用。";
+    }
     dom.accountCreateDetails.open = accounts.length === 0;
 
-    dom.accountList.innerHTML = accounts.length
-      ? accounts
+    const cloudCard = activeAccount?.cloud
+      ? `
+          <div class="account-card is-current is-selected">
+            <span class="account-card__avatar">${escapeHtml(accountInitial(activeAccount.name))}</span>
+            <span class="account-card__copy">
+              <strong>${escapeHtml(activeAccount.name)}</strong>
+              <small>云端同步账号</small>
+            </span>
+            <span class="account-card__badge">云端</span>
+          </div>
+        `
+      : "";
+    dom.accountList.innerHTML = accounts.length || cloudCard
+      ? cloudCard +
+        accounts
           .map(
             (account) => `
               <button
@@ -480,12 +739,16 @@
       dom.accountCreateMessage.textContent = "请输入账号名称。";
       return;
     }
-    if (accountList().some((account) => account.name.toLowerCase() === name.toLowerCase())) {
+    if (
+      !cloudIsConfigured() &&
+      accountList().some((account) => account.name.toLowerCase() === name.toLowerCase())
+    ) {
       dom.accountCreateMessage.textContent = "这个账号名称已经存在。";
       return;
     }
-    if (password.length < 4) {
-      dom.accountCreateMessage.textContent = "密码至少需要 4 位。";
+    const minimumPasswordLength = cloudIsConfigured() ? 6 : 4;
+    if (password.length < minimumPasswordLength) {
+      dom.accountCreateMessage.textContent = `密码至少需要 ${minimumPasswordLength} 位。`;
       return;
     }
     if (password !== confirmation) {
@@ -494,8 +757,20 @@
     }
 
     dom.accountCreateSubmit.disabled = true;
-    dom.accountCreateSubmit.textContent = "正在创建…";
+    dom.accountCreateSubmit.textContent = cloudIsConfigured() ? "正在注册…" : "正在创建…";
     try {
+      if (cloudIsConfigured()) {
+        const data = await signUpCloudAccount(name, password);
+        const migratedState =
+          activeAccount && !activeAccount.cloud
+            ? normalizeState(JSON.parse(JSON.stringify(state)))
+            : loadLegacyState();
+        dom.accountCreateForm.reset();
+        await activateCloudAccount(data.user, name, { stateOverride: migratedState });
+        await syncStateToCloud();
+        showToast("云端账号已注册，之后可在其他浏览器登录");
+        return;
+      }
       const salt = createSalt();
       const account = {
         id: accountId(),
@@ -521,10 +796,10 @@
       showToast(isFirstAccount ? "账号已创建，原有进度已迁移" : "新账号已创建");
     } catch (error) {
       console.error("Account creation failed:", error);
-      dom.accountCreateMessage.textContent = "当前浏览器无法安全保存密码，请换用 Chrome 或 Safari。";
+      dom.accountCreateMessage.textContent = error.message || "账号创建失败，请重试。";
     } finally {
       dom.accountCreateSubmit.disabled = false;
-      dom.accountCreateSubmit.textContent = "创建并进入";
+      dom.accountCreateSubmit.textContent = cloudIsConfigured() ? "注册并进入" : "创建并进入";
     }
   }
 
@@ -981,9 +1256,9 @@
     renderAll();
   }
 
-  function speakWord(word) {
+  function speakWithSystemVoice(word, token) {
     if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
-      showToast("当前浏览器不支持系统发音");
+      showToast("发音服务暂时不可用，请检查网络后重试");
       return;
     }
     window.speechSynthesis.cancel();
@@ -997,10 +1272,80 @@
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.volume = 1;
-    utterance.onstart = () => runtime.quiz && dom.quizSoundPulse.classList.add("is-speaking");
-    utterance.onend = utterance.onerror = () =>
-      dom.quizSoundPulse?.classList.remove("is-speaking");
+    utterance.onstart = () => {
+      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.add("is-speaking");
+    };
+    utterance.onend = () => {
+      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.remove("is-speaking");
+    };
+    utterance.onerror = () => {
+      if (token === runtime.pronunciationToken) {
+        dom.quizSoundPulse?.classList.remove("is-speaking");
+        showToast("发音加载失败，请检查网络后重试");
+      }
+    };
     window.speechSynthesis.speak(utterance);
+  }
+
+  function pronunciationSources(word) {
+    const encoded = encodeURIComponent(word.trim());
+    return [
+      `https://dict.youdao.com/dictvoice?audio=${encoded}&type=1`,
+      `https://dict.youdao.com/dictvoice?audio=${encoded}&type=2`,
+      `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encoded}`,
+    ];
+  }
+
+  function playPronunciationSource(word, sources, index, token) {
+    if (token !== runtime.pronunciationToken) return;
+    if (index >= sources.length) {
+      speakWithSystemVoice(word, token);
+      return;
+    }
+    if (!wordAudio) {
+      speakWithSystemVoice(word, token);
+      return;
+    }
+    wordAudio.pause();
+    wordAudio.src = sources[index];
+    wordAudio.currentTime = 0;
+    wordAudio.playbackRate = 1;
+    wordAudio.onplay = () => {
+      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.add("is-speaking");
+    };
+    wordAudio.onended = () => {
+      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.remove("is-speaking");
+    };
+    wordAudio.onerror = () => {
+      if (token !== runtime.pronunciationToken) return;
+      playPronunciationSource(word, sources, index + 1, token);
+    };
+    const result = wordAudio.play();
+    if (result) {
+      result.catch((error) => {
+        if (token !== runtime.pronunciationToken) return;
+        if (error?.name === "NotAllowedError") {
+          dom.quizSoundPulse?.classList.remove("is-speaking");
+          showToast("浏览器阻止了自动播放，请再点一次发音按钮");
+          return;
+        }
+        playPronunciationSource(word, sources, index + 1, token);
+      });
+    }
+  }
+
+  function speakWord(word) {
+    const cleanWord = String(word || "").trim();
+    if (!cleanWord) return;
+    runtime.pronunciationToken += 1;
+    const token = runtime.pronunciationToken;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (wordAudio) {
+      wordAudio.pause();
+      wordAudio.removeAttribute("src");
+      wordAudio.load();
+    }
+    playPronunciationSource(cleanWord, pronunciationSources(cleanWord), 0, token);
   }
 
   function quizEntriesForPack() {
@@ -1487,6 +1832,7 @@
       }
     });
     dom.accountLoginForm.addEventListener("submit", loginAccount);
+    dom.cloudLoginForm.addEventListener("submit", cloudLogin);
     dom.accountCreateForm.addEventListener("submit", createAccount);
     dom.accountPasswordForm.addEventListener("submit", changeAccountPassword);
     dom.accountLockButton.addEventListener("click", lockCurrentAccount);
@@ -1683,35 +2029,51 @@
       await runtime.deferredInstallPrompt.userChoice;
       runtime.deferredInstallPrompt = null;
     });
+    window.addEventListener("online", () => {
+      if (!activeAccount?.cloud) return;
+      if (runtime.cloudDirty) syncStateToCloud();
+      else refreshStateFromCloud({ notify: true });
+    });
+    window.addEventListener("focus", () => refreshStateFromCloud({ notify: true }));
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") refreshStateFromCloud({ notify: true });
+    });
   }
 
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=22").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=23").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
   }
 
-  function init() {
+  async function init() {
     cacheDom();
     audio = dom.trainingAudio;
+    wordAudio = dom.wordPronunciationAudio;
     audio.preload = "metadata";
     audio.playbackRate = 1;
     audio.defaultPlaybackRate = 1;
-    const sessionAccountId = sessionStorage.getItem(ACCOUNT_SESSION_KEY);
-    const sessionAccount = accountStore.accounts[sessionAccountId];
-    if (sessionAccount) {
-      activeAccount = sessionAccount;
-      state = loadStateForAccount(sessionAccount.id);
-      runtime.selectedAccountId = sessionAccount.id;
-    } else {
-      runtime.selectedAccountId =
-        accountStore.activeAccountId || accountList()[0]?.id || "";
-      runtime.accountDialogRequired = true;
-    }
+    wordAudio.preload = "none";
+    wordAudio.playbackRate = 1;
+    wordAudio.defaultPlaybackRate = 1;
     bindEvents();
+    const cloudRestored = await restoreCloudSession();
+    if (!cloudRestored) {
+      const sessionAccountId = sessionStorage.getItem(ACCOUNT_SESSION_KEY);
+      const sessionAccount = accountStore.accounts[sessionAccountId];
+      if (sessionAccount) {
+        activeAccount = sessionAccount;
+        state = loadStateForAccount(sessionAccount.id);
+        runtime.selectedAccountId = sessionAccount.id;
+      } else {
+        runtime.selectedAccountId =
+          accountStore.activeAccountId || accountList()[0]?.id || "";
+        runtime.accountDialogRequired = true;
+      }
+    }
     renderAccountHeader();
     renderAccountDialog();
     renderAll();

@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=22" />
+    <link rel="manifest" href="./manifest.webmanifest?v=23" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=22" />
+    <link rel="stylesheet" href="./styles.css?v=23" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -230,7 +230,7 @@
       </main>
 
       <footer>
-        <p>学习记录保存在当前浏览器，请定期备份。单词发音固定为正常 1×，训练音频按点击即时加载。</p>
+        <p>云端账号可跨浏览器同步学习记录。单词发音固定为正常 1×，训练音频按点击即时加载。</p>
         <p>Listening Practice Book · Built from your own materials</p>
       </footer>
     </div>
@@ -238,7 +238,7 @@
     <dialog class="account-dialog" id="accountDialog">
       <div class="account-dialog__top">
         <div>
-          <p class="eyebrow">LOCAL LEARNING ACCOUNTS</p>
+          <p class="eyebrow">LEARNING ACCOUNTS</p>
           <h2>切换学习账号</h2>
           <p>每个账号的任务、单词、错词与测试进度相互独立。</p>
         </div>
@@ -246,6 +246,50 @@
       </div>
 
       <div class="account-list" id="accountList"></div>
+
+      <div class="cloud-status" id="cloudStatus" role="status">
+        <span class="status-light" aria-hidden="true"></span>
+        <p>
+          <strong>跨浏览器同步</strong>
+          <small id="cloudStatusText">正在检查云端同步配置…</small>
+        </p>
+      </div>
+
+      <form class="account-cloud-login" id="cloudLoginForm">
+        <div class="account-form-heading">
+          <div>
+            <p class="eyebrow">CLOUD LOGIN</p>
+            <h3>登录已有账号</h3>
+          </div>
+          <span>换浏览器也能继续</span>
+        </div>
+        <div class="account-form-fields">
+          <label>
+            <span>账号名称</span>
+            <input
+              id="cloudLoginName"
+              type="text"
+              maxlength="20"
+              autocomplete="username"
+              placeholder="输入已注册的账号名"
+              required
+            />
+          </label>
+          <label>
+            <span>密码</span>
+            <input
+              id="cloudLoginPassword"
+              type="password"
+              minlength="4"
+              autocomplete="current-password"
+              placeholder="输入密码"
+              required
+            />
+          </label>
+          <button class="primary-button" id="cloudLoginSubmit" type="submit">登录账号</button>
+        </div>
+        <p class="account-form-message" id="cloudLoginMessage" aria-live="polite"></p>
+      </form>
 
       <form class="account-login-panel" id="accountLoginForm" hidden>
         <div class="account-login-panel__identity">
@@ -348,7 +392,7 @@
       </details>
 
       <div class="account-dialog__footer">
-        <p>密码经过加密摘要后仅保存在当前浏览器，不会上传到服务器。</p>
+        <p>云端账号由安全认证服务管理；本机账号仅保存在当前浏览器。</p>
         <button class="secondary-button" id="accountLockButton" type="button" hidden>锁定当前账号</button>
       </div>
     </dialog>
@@ -420,6 +464,13 @@
       </div>
       <button class="audio-dock__close" id="audioCloseButton" type="button" aria-label="关闭播放器">×</button>
     </div>
+    <audio
+      id="wordPronunciationAudio"
+      class="sr-only"
+      preload="none"
+      playsinline
+      webkit-playsinline
+    ></audio>
 
     <input id="importFileInput" class="sr-only" type="file" accept="application/json,.json" />
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -430,7 +481,9 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=22"></script>
-    <script src="./app.js?v=22"></script>
+    <script src="./listening-data.js?v=23"></script>
+    <script src="./cloud-config.js?v=1"></script>
+    <script src="./vendor/supabase.min.js?v=1"></script>
+    <script src="./app.js?v=23"></script>
   </body>
 </html>

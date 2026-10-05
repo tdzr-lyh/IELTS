@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 import shutil
 import zipfile
 from pathlib import Path
@@ -17,10 +19,11 @@ FILES = [
     "listening-data.js",
     "manifest.webmanifest",
     "service-worker.js",
+    "cloud-config.js",
     "_headers",
     ".nojekyll",
 ]
-DIRECTORIES = ["icons", "media"]
+DIRECTORIES = ["icons", "media", "vendor"]
 
 
 def ensure_inside_root(path: Path) -> None:
@@ -46,6 +49,19 @@ def main() -> None:
     for relative in DIRECTORIES:
         source = ROOT / relative
         shutil.copytree(source, DIST / relative)
+
+    supabase_url = os.environ.get("SUPABASE_URL", "").strip()
+    supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+    if supabase_url and supabase_anon_key:
+        cloud_config = (
+            "// Generated during deployment from GitHub repository variables.\n"
+            "window.LISTENING_CLOUD = {\n"
+            '  provider: "supabase",\n'
+            f"  url: {json.dumps(supabase_url)},\n"
+            f"  anonKey: {json.dumps(supabase_anon_key)},\n"
+            "};\n"
+        )
+        (DIST / "cloud-config.js").write_text(cloud_config, encoding="utf-8")
 
     if ARCHIVE.exists():
         ARCHIVE.unlink()

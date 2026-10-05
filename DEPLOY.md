@@ -38,14 +38,32 @@ python build_deploy.py
 - 安卓 Chrome：菜单 → 安装应用 / 添加到主屏幕。
 - iPhone Safari：分享 → 添加到主屏幕。
 
-首次联网打开后，页面框架会缓存到设备中。学习进度保存在浏览器中；训练音频采用联网流式播放。
+首次联网打开后，页面框架会缓存到设备中。训练音频采用联网流式播放。
 
-## 进度说明
+## 开启账号登录与跨浏览器同步
 
-学习进度默认保存在当前手机浏览器中：
+GitHub Pages 只能托管静态网页，本身不能保存账号与密码。项目已经接入 Supabase Auth 和数据库，只需做一次配置：
 
-- 不需要电脑作为服务器。
-- 清理浏览器网站数据会清除本机进度。
-- 使用“备份进度”下载 JSON。
-- 在另一台设备点击“导入”，可迁移任务断点、词汇掌握、错词和测试统计。
-- 每个本机账号拥有独立进度；导出的备份只包含当前账号的学习数据，不包含密码。
+1. 在 Supabase 创建免费项目。
+2. 打开 SQL Editor，复制并运行项目中的 `supabase-setup.sql`。
+3. 打开 Authentication → Providers → Email：
+   - 开启 Email provider。
+   - 关闭 Confirm email（网站使用内部账号标识，不要求真实邮箱）。
+4. 打开 GitHub 仓库 Settings → Secrets and variables → Actions → Variables，新建：
+   - `SUPABASE_URL`：Project Settings → API 中的 Project URL。
+   - `SUPABASE_ANON_KEY`：Project Settings → API 中的 anon public key。
+5. 在 Actions 页面重新运行 `Deploy static PWA to GitHub Pages`。
+
+部署脚本会在构建时自动把这两个公开配置写进 `dist/cloud-config.js`。不要使用或泄露 Supabase 的 `service_role` key。
+
+配置后：
+
+- “登录已有账号”和“注册并进入”会同时显示。
+- 同一账号可以在手机、电脑和不同浏览器登录。
+- 任务、词汇、错词、听写和测试进度按账号隔离并自动同步。
+- 本机会保留离线缓存；恢复联网后会继续同步。
+- 仍可使用“备份进度”下载 JSON 作为额外保险。
+
+## 手机单词发音
+
+单词按钮现在会直接播放在线词典 MP3，不依赖手机是否安装系统英文语音包。发音固定为正常 1×。如果浏览器阻止测试题自动播放，手动点击一次“再听一次”即可解除限制。

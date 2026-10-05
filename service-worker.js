@@ -1,11 +1,13 @@
-const APP_CACHE = "listening-practice-book-v22";
+const APP_CACHE = "listening-practice-book-v23";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=22",
-  "./app.js?v=22",
-  "./listening-data.js?v=22",
-  "./manifest.webmanifest?v=22",
+  "./styles.css?v=23",
+  "./app.js?v=23",
+  "./listening-data.js?v=23",
+  "./manifest.webmanifest?v=23",
+  "./cloud-config.js?v=1",
+  "./vendor/supabase.min.js?v=1",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
 ];
