@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=20" />
+    <link rel="manifest" href="./manifest.webmanifest?v=21" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=20" />
+    <link rel="stylesheet" href="./styles.css?v=21" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -277,6 +277,13 @@
     </dialog>
 
     <div class="audio-dock" id="audioDock" hidden>
+      <audio
+        id="trainingAudio"
+        class="audio-dock__engine"
+        preload="metadata"
+        playsinline
+        webkit-playsinline
+      ></audio>
       <button class="audio-dock__play" id="audioPlayButton" type="button" aria-label="播放或暂停">▶</button>
       <div class="audio-dock__main">
         <div>
@@ -298,7 +305,7 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=20"></script>
-    <script src="./app.js?v=20"></script>
+    <script src="./listening-data.js?v=21"></script>
+    <script src="./app.js?v=21"></script>
   </body>
 </html>

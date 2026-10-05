@@ -1364,6 +1364,15 @@ dialog::backdrop {
   display: none;
 }
 
+.audio-dock__engine {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0.01;
+  pointer-events: none;
+}
+
 .audio-dock__play,
 .audio-dock__close {
   display: grid;

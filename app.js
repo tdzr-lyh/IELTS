@@ -20,10 +20,7 @@
     audioTrackId: "",
   };
 
-  const audio = new Audio();
-  audio.preload = "none";
-  audio.playbackRate = 1;
-  audio.defaultPlaybackRate = 1;
+  let audio;
 
   const sceneWords = flattenCategories(library.sceneCategories || [], "scene");
   const jijingWords = flattenCategories(library.jijingCategories || [], "jijing");
@@ -190,6 +187,7 @@
       "quizFeedback",
       "quizNextButton",
       "audioDock",
+      "trainingAudio",
       "audioPlayButton",
       "audioTitle",
       "audioSeek",
@@ -1038,6 +1036,7 @@
       audio.preload = "metadata";
       audio.playbackRate = 1;
       audio.defaultPlaybackRate = 1;
+      audio.load();
       runtime.audioTrackId = trackId;
       dom.audioTitle.textContent = `${track.level} 分 · ${track.title}`;
       dom.audioSeek.value = "0";
@@ -1049,9 +1048,10 @@
     dom.audioPlayButton.textContent = "…";
     const playPromise = audio.play();
     if (playPromise) {
-      playPromise.catch(() => {
+      playPromise.catch((error) => {
         dom.audioPlayButton.textContent = "▶";
-        showToast("音频暂时无法播放，请检查网络后重试");
+        console.warn("Audio playback failed:", error);
+        showToast("浏览器拦截了播放，请再点一次下方播放键");
       });
     }
   }
@@ -1295,7 +1295,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=20").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=21").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
@@ -1303,6 +1303,10 @@
 
   function init() {
     cacheDom();
+    audio = dom.trainingAudio;
+    audio.preload = "metadata";
+    audio.playbackRate = 1;
+    audio.defaultPlaybackRate = 1;
     bindEvents();
     renderAll();
     registerServiceWorker();
