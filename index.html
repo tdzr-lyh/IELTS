@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=23" />
+    <link rel="manifest" href="./manifest.webmanifest?v=24" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=23" />
+    <link rel="stylesheet" href="./styles.css?v=24" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -423,6 +423,25 @@
       <div class="dialog-word-list" id="dialogWordList"></div>
     </dialog>
 
+    <dialog class="answer-dialog" id="answerDialog">
+      <form method="dialog" class="dialog-close-row">
+        <button aria-label="关闭听写答案" type="submit">×</button>
+      </form>
+      <div class="answer-dialog__head">
+        <div>
+          <p class="eyebrow">DICTATION KEY</p>
+          <h2 id="answerDialogTitle">听写答案</h2>
+          <p id="answerDialogMeta">5.5 分 · 基本功听写</p>
+        </div>
+        <button class="secondary-button" id="answerDialogPlay" type="button">重新播放音频</button>
+      </div>
+      <div class="answer-dialog__tip">
+        <strong>建议先完成听写，再逐项核对</strong>
+        <span>答案来自你的听写教材，保留了原编号、拼写、音标与中文释义。</span>
+      </div>
+      <pre class="answer-dialog__paper" id="answerDialogText"></pre>
+    </dialog>
+
     <dialog class="quiz-dialog" id="quizDialog">
       <form method="dialog" class="dialog-close-row">
         <button aria-label="暂时退出测试" type="submit">×</button>
@@ -481,9 +500,9 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=23"></script>
+    <script src="./listening-data.js?v=24"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=23"></script>
+    <script src="./app.js?v=24"></script>
   </body>
 </html>

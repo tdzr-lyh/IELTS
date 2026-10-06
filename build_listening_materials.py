@@ -18,6 +18,49 @@ OUTPUT_MEDIA = PROJECT_ROOT / "media" / "listening"
 SCENE_ROOT = MATERIAL_ROOT / "听力场景高频单词"
 JIJING_ROOT = MATERIAL_ROOT / "听力机经词汇"
 
+DICTATION_PDFS = {
+    "55-basic": MATERIAL_ROOT / "5.5分听写" / "听力基本功训练 5.5.pdf",
+    "55-vocabulary": MATERIAL_ROOT / "5.5分听写" / "听力词汇听写训练 5.5.pdf",
+    "60-basic": MATERIAL_ROOT / "6.0分听写" / "听力基本功训练 6.0.pdf",
+    "60-vocabulary": MATERIAL_ROOT / "6.0分听写" / "听力词汇听写训练 6.0.pdf",
+}
+
+# 每个音频对应教材中的答案页。start/end 用来从合并后的页面文本中截取当前音频答案。
+TRACK_ANSWER_SPECS = {
+    "55-basic-01": ("55-basic", [21], "电话号码-LEVEL 1", "电话号码-LEVEL 2"),
+    "55-basic-02": ("55-basic", [21], "电话号码-LEVEL 2", "电话号码-LEVEL 3"),
+    "55-basic-03": ("55-basic", [21], "电话号码-LEVEL 3", "电话号码-LEVEL4"),
+    "55-basic-04": ("55-basic", [21], "电话号码-LEVEL4", "电话号码-LEVEL 5"),
+    "55-basic-05": ("55-basic", [21, 22], "电话号码-LEVEL 5", "电话号码-LEVEL 6"),
+    "55-basic-06": ("55-basic", [22], "电话号码-LEVEL 6", "Section Two: 钱数"),
+    "55-basic-07": ("55-basic", [22], "钱数-LEVEL 1", "钱数-LEVEL 2"),
+    "55-basic-08": ("55-basic", [22, 23], "钱数-LEVEL 2", "Section Three: 字母+数字 组合练习"),
+    "55-basic-09": ("55-basic", [23], "邮编", "Section Four: 地名"),
+    "55-basic-10": ("55-basic", [23, 24], "Section Four: 地名", "Section Five: 人名"),
+    "55-basic-11": ("55-basic", [24], "Section Five: 人名", "Section Six: 时间"),
+    "55-basic-12": ("55-basic", [24, 25], "日期", "\n时间\n"),
+    "55-basic-13": ("55-basic", [25], "时间", None),
+    "55-vocabulary-01": ("55-vocabulary", [16, 17], "Answer Key:", None),
+    "55-vocabulary-02": ("55-vocabulary", [5, 6, 7], "Answer Key:", None),
+    "55-vocabulary-03": ("55-vocabulary", [12, 13], "Answer Key:", None),
+    "55-vocabulary-04": ("55-vocabulary", [9], "Answer Key:", None),
+    "60-basic-01": ("60-basic", [15], "信用卡卡号", "综合训练"),
+    "60-basic-02": ("60-basic", [15], "综合训练", None),
+    "60-basic-03": ("60-basic", [16], "综合训练：", "Section Three: 字母+数字 组合练习"),
+    "60-basic-04": ("60-basic", [16], "\n钱数\n", "综合训练："),
+    "60-basic-05": ("60-basic", [16], "Section Three: 字母+数字 组合练习", None),
+    "60-basic-06": ("60-basic", [16], "Section Three: 字母+数字 组合练习", None),
+    "60-basic-07": ("60-basic", [17], "地名-Level 1", "地名-Level 2"),
+    "60-basic-08": ("60-basic", [17], "地名-Level 2", "Section Five: 日期及年代"),
+    "60-basic-09": ("60-basic", [17], "\n年代\n", None),
+    "60-basic-10": ("60-basic", [17], "\n日期\n", "\n年代\n"),
+    "60-vocabulary-01": ("60-vocabulary", [8], "Answer Key:", None),
+    "60-vocabulary-02": ("60-vocabulary", [10], "Answer Key:", None),
+    "60-vocabulary-03": ("60-vocabulary", [5, 6], "Answer Key:", None),
+    "60-vocabulary-04": ("60-vocabulary", [12], "Answer Key:", None),
+    "60-vocabulary-05": ("60-vocabulary", [14, 15], "Answer Key:", None),
+}
+
 SCENE_PDFS = [
     "1. 租房场景机经高频词汇.pdf",
     "2. 旅游场景机经高频词汇.pdf",
@@ -293,6 +336,65 @@ def track_title(path: Path) -> str:
     return f"{parent} · {filename}"
 
 
+def clean_answer_page(text: str) -> str:
+    lines = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            lines.append("")
+            continue
+        if "版权所有" in line:
+            continue
+        if re.match(r"^\d+\s+Approach\s+雅思课程吸收端", line):
+            continue
+        if re.match(r"^Approach\s+雅思课程吸收端$", line):
+            continue
+        if line in {"听力基本功", "听写词", "Key:"}:
+            continue
+        lines.append(line)
+    cleaned = "\n".join(lines)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def extract_answer_text(
+    pdf: pdfplumber.PDF,
+    page_numbers: list[int],
+    start: str | None,
+    end: str | None,
+) -> str:
+    text = "\n".join(
+        clean_answer_page(pdf.pages[page_number - 1].extract_text() or "")
+        for page_number in page_numbers
+    )
+    if start:
+        start_index = text.find(start)
+        if start_index < 0:
+            raise ValueError(f"Answer start marker not found: {start!r}")
+        text = text[start_index + len(start) :]
+    if end:
+        end_index = text.find(end)
+        if end_index < 0:
+            raise ValueError(f"Answer end marker not found: {end!r}")
+        text = text[:end_index]
+    text = text.replace("Answer Key:", "").strip(" \n:：")
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def build_track_answers() -> dict[str, str]:
+    answers: dict[str, str] = {}
+    grouped_specs: dict[str, list[tuple[str, list[int], str | None, str | None]]] = {}
+    for track_id, (pdf_key, pages, start, end) in TRACK_ANSWER_SPECS.items():
+        grouped_specs.setdefault(pdf_key, []).append((track_id, pages, start, end))
+
+    for pdf_key, specs in grouped_specs.items():
+        path = DICTATION_PDFS[pdf_key]
+        with pdfplumber.open(path) as pdf:
+            for track_id, pages, start, end in specs:
+                answers[track_id] = extract_answer_text(pdf, pages, start, end)
+    return answers
+
+
 def build_tracks() -> list[dict]:
     OUTPUT_MEDIA.mkdir(parents=True, exist_ok=True)
     for old_file in OUTPUT_MEDIA.glob("*"):
@@ -300,6 +402,7 @@ def build_tracks() -> list[dict]:
             old_file.unlink()
 
     tracks = []
+    track_answers = build_track_answers()
     roots = [
         MATERIAL_ROOT / "5.5分听写",
         MATERIAL_ROOT / "6.0分听写",
@@ -315,14 +418,16 @@ def build_tracks() -> list[dict]:
             filename = f"{safe_level}-{track_type}-{counters[key]:02d}.mp3"
             target = OUTPUT_MEDIA / filename
             shutil.copy2(source, target)
+            track_id = filename.removesuffix(".mp3")
             tracks.append(
                 {
-                    "id": filename.removesuffix(".mp3"),
+                    "id": track_id,
                     "level": level,
                     "type": track_type,
                     "title": track_title(relative),
                     "sourceFile": str(relative).replace("\\", "/"),
                     "url": f"./media/listening/{filename}",
+                    "answerText": track_answers.get(track_id, ""),
                 }
             )
     return tracks

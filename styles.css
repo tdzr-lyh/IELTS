@@ -767,6 +767,17 @@ button:disabled {
   min-width: 112px;
 }
 
+.track-step-actions {
+  display: grid;
+  gap: 7px;
+}
+
+.answer-button {
+  color: #7a5686;
+  border-color: rgba(188, 116, 157, 0.22);
+  background: rgba(255, 238, 247, 0.72);
+}
+
 .word-checklist {
   grid-column: 2 / -1;
   display: grid;
@@ -1058,7 +1069,26 @@ button:disabled {
 }
 
 .track-card p {
+  margin-bottom: 8px;
+}
+
+.track-card__answer {
+  grid-column: 2;
+  justify-self: start;
   margin-bottom: 23px;
+  padding: 7px 11px;
+  border: 1px solid rgba(188, 116, 157, 0.2);
+  border-radius: 10px;
+  color: #7a5686;
+  background: rgba(255, 238, 247, 0.68);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.track-card__answer:hover {
+  border-color: rgba(188, 116, 157, 0.42);
+  background: rgba(255, 226, 241, 0.86);
 }
 
 .empty-chapters {
@@ -1137,6 +1167,7 @@ dialog::backdrop {
 
 .chapter-dialog,
 .quiz-dialog,
+.answer-dialog,
 .account-dialog {
   width: min(calc(100% - 30px), 780px);
   max-height: min(88vh, 850px);
@@ -1152,6 +1183,72 @@ dialog::backdrop {
 
 .account-dialog {
   width: min(calc(100% - 30px), 650px);
+}
+
+.answer-dialog {
+  width: min(calc(100% - 30px), 760px);
+}
+
+.answer-dialog__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: -10px;
+}
+
+.answer-dialog__head h2 {
+  margin: 0;
+  color: var(--ink-strong);
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 32px;
+  font-weight: 500;
+}
+
+.answer-dialog__head p:last-child {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.answer-dialog__tip {
+  display: grid;
+  gap: 3px;
+  margin: 22px 0 12px;
+  padding: 13px 15px;
+  border: 1px solid rgba(78, 145, 218, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(110deg, rgba(226, 244, 255, 0.72), rgba(255, 235, 244, 0.64));
+}
+
+.answer-dialog__tip strong {
+  color: var(--ink-strong);
+  font-size: 11px;
+}
+
+.answer-dialog__tip span {
+  color: var(--ink-soft);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.answer-dialog__paper {
+  min-height: 250px;
+  margin: 0;
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid rgba(83, 112, 153, 0.13);
+  border-radius: 18px;
+  color: #33425d;
+  background:
+    linear-gradient(rgba(112, 156, 206, 0.09) 1px, transparent 1px) 0 31px / 100% 31px,
+    rgba(255, 255, 255, 0.82);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Microsoft YaHei", monospace;
+  font-size: 13px;
+  line-height: 2.38;
+  tab-size: 2;
 }
 
 .account-dialog__top {
@@ -1971,6 +2068,15 @@ dialog::backdrop {
     flex-direction: column;
   }
 
+  .answer-dialog__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .answer-dialog__head > button {
+    width: 100%;
+  }
+
   .hero {
     grid-template-columns: 1fr;
     min-height: auto;
@@ -2280,6 +2386,7 @@ dialog::backdrop {
 
   .chapter-dialog,
   .quiz-dialog,
+  .answer-dialog,
   .account-dialog {
     width: calc(100% - 14px);
     max-height: calc(100dvh - 14px);
@@ -2289,6 +2396,17 @@ dialog::backdrop {
 
   .account-dialog__top h2 {
     font-size: 28px;
+  }
+
+  .answer-dialog__head h2 {
+    font-size: 27px;
+  }
+
+  .answer-dialog__paper {
+    min-height: 310px;
+    padding: 17px 14px;
+    font-size: 12px;
+    line-height: 2.25;
   }
 
   .dialog-word-toolbar {

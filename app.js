@@ -18,6 +18,7 @@
     bookTab: "scene",
     dialogEntries: [],
     dialogIndex: 0,
+    answerTrackId: "",
     quiz: null,
     toastTimer: null,
     deferredInstallPrompt: null,
@@ -585,6 +586,11 @@
       "dialogPrevWord",
       "dialogNextWord",
       "dialogWordList",
+      "answerDialog",
+      "answerDialogTitle",
+      "answerDialogMeta",
+      "answerDialogText",
+      "answerDialogPlay",
       "quizDialog",
       "quizPosition",
       "quizProgressBar",
@@ -1043,10 +1049,13 @@
             <h4>${escapeHtml(track.level)} 分听写 · ${escapeHtml(track.title)}</h4>
             <p>先完整听一遍，再分段听写和核对。音频固定正常 1×，点击后才加载。</p>
           </div>
-          <div class="step-action">
+          <div class="step-action track-step-actions">
             <button class="secondary-button" type="button" data-play-track="${escapeHtml(
               track.id,
             )}">播放音频</button>
+            <button class="secondary-button answer-button" type="button" data-show-track-answer="${escapeHtml(
+              track.id,
+            )}">显示答案</button>
             <button class="secondary-button" type="button" data-complete-track="${escapeHtml(
               track.id,
             )}">${pack.trackDone ? "取消完成" : "完成听写"}</button>
@@ -1651,9 +1660,25 @@
         </span>
         <h4>${escapeHtml(track.title)}</h4>
         <p>${done ? "已完成" : "点击即播 · 正常 1×"}</p>
+        <button class="track-card__answer" type="button" data-show-track-answer="${escapeHtml(
+          track.id,
+        )}">显示答案</button>
         <span class="chapter-card__progress"><span style="width:${done ? 100 : 0}%"></span></span>
       </article>
     `;
+  }
+
+  function openTrackAnswer(trackId) {
+    const track = trackMap.get(trackId);
+    if (!track) return;
+    runtime.answerTrackId = trackId;
+    dom.answerDialogTitle.textContent = track.title;
+    dom.answerDialogMeta.textContent = `${track.level} 分 · ${
+      track.type === "basic" ? "基本功听写" : "词汇听写"
+    }`;
+    dom.answerDialogText.textContent =
+      String(track.answerText || "").trim() || "这组资料暂时没有可显示的文字答案。";
+    if (!dom.answerDialog.open) dom.answerDialog.showModal();
   }
 
   function openCategory(group, categoryId) {
@@ -1880,6 +1905,11 @@
         playTrack(trackButton.dataset.playTrack);
         return;
       }
+      const answerButton = event.target.closest("[data-show-track-answer]");
+      if (answerButton) {
+        openTrackAnswer(answerButton.dataset.showTrackAnswer);
+        return;
+      }
       const completeTrack = event.target.closest("[data-complete-track]");
       if (completeTrack) toggleTrackDone(completeTrack.dataset.completeTrack);
     });
@@ -1901,6 +1931,11 @@
       const trackButton = event.target.closest("[data-play-track]");
       if (trackButton) {
         playTrack(trackButton.dataset.playTrack);
+        return;
+      }
+      const answerButton = event.target.closest("[data-show-track-answer]");
+      if (answerButton) {
+        openTrackAnswer(answerButton.dataset.showTrackAnswer);
         return;
       }
       const reviewButton = event.target.closest("[data-review-chunk]");
@@ -1934,6 +1969,13 @@
       renderDialogWord();
       const entry = runtime.dialogEntries[runtime.dialogIndex];
       if (entry) speakWord(entry.term);
+    });
+    dom.answerDialogPlay.addEventListener("click", () => {
+      if (!runtime.answerTrackId) return;
+      playTrack(runtime.answerTrackId);
+    });
+    dom.answerDialog.addEventListener("close", () => {
+      runtime.answerTrackId = "";
     });
 
     dom.quizPlayButton.addEventListener("click", () => {
@@ -2043,7 +2085,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=23").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=24").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
