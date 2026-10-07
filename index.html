@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=24" />
+    <link rel="manifest" href="./manifest.webmanifest?v=25" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=24" />
+    <link rel="stylesheet" href="./styles.css?v=25" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -357,8 +357,45 @@
         </form>
       </details>
 
+      <details class="account-create-box account-upgrade-box" id="accountUpgradeDetails" hidden>
+        <summary>☁ 将当前本机账号升级为云端账号</summary>
+        <p class="account-upgrade-copy" id="accountUpgradeCopy">
+          保留当前任务和学习进度，升级后即可在电脑、手机和平板登录。
+        </p>
+        <form id="accountUpgradeForm">
+          <label>
+            <span>设置云端密码</span>
+            <input
+              id="upgradeCloudPassword"
+              type="password"
+              minlength="6"
+              maxlength="64"
+              autocomplete="new-password"
+              placeholder="至少 6 位"
+              required
+            />
+          </label>
+          <label>
+            <span>确认云端密码</span>
+            <input
+              id="upgradeCloudPasswordConfirm"
+              type="password"
+              minlength="6"
+              maxlength="64"
+              autocomplete="new-password"
+              placeholder="再次输入密码"
+              required
+            />
+          </label>
+          <p class="account-form-message" id="accountUpgradeMessage" aria-live="polite"></p>
+          <button class="primary-button" id="accountUpgradeSubmit" type="submit">
+            升级并同步当前进度
+          </button>
+        </form>
+      </details>
+
       <details class="account-create-box account-password-box" id="accountPasswordDetails" hidden>
-        <summary>修改当前账号密码</summary>
+        <summary id="accountPasswordSummary">修改当前账号密码</summary>
         <form id="accountPasswordForm">
           <label>
             <span>原密码</span>
@@ -500,9 +537,9 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=24"></script>
+    <script src="./listening-data.js?v=25"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=24"></script>
+    <script src="./app.js?v=25"></script>
   </body>
 </html>

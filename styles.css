@@ -1598,6 +1598,32 @@ dialog::backdrop {
   grid-column: 3;
 }
 
+.account-upgrade-box {
+  border-color: rgba(62, 170, 145, 0.28);
+  background:
+    radial-gradient(circle at 100% 0, rgba(215, 250, 239, 0.72), transparent 13rem),
+    rgba(250, 255, 253, 0.72);
+}
+
+.account-upgrade-box summary {
+  color: var(--success);
+}
+
+.account-upgrade-copy {
+  margin: 11px 2px 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.account-upgrade-box form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-upgrade-box form > button {
+  grid-column: 1 / -1;
+}
+
 .account-dialog__footer {
   display: flex;
   align-items: center;

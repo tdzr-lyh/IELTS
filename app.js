@@ -362,7 +362,14 @@
         password,
       });
       if (error || !data.user) {
-        dom.cloudLoginMessage.textContent = "账号名或密码不正确。";
+        const message = String(error?.message || "").toLowerCase();
+        if (message.includes("email not confirmed")) {
+          dom.cloudLoginMessage.textContent =
+            "这个账号是在邮箱确认关闭前注册的，尚未激活。请在原设备重新注册云端账号。";
+        } else {
+          dom.cloudLoginMessage.textContent =
+            "账号名或密码不正确。如果这是旧版创建的本机账号，请在原手机打开账号窗口，使用“升级为云端账号”。";
+        }
         return;
       }
       await activateCloudAccount(data.user, name);
@@ -528,7 +535,15 @@
       "newAccountPasswordConfirm",
       "accountCreateMessage",
       "accountCreateSubmit",
+      "accountUpgradeDetails",
+      "accountUpgradeCopy",
+      "accountUpgradeForm",
+      "upgradeCloudPassword",
+      "upgradeCloudPasswordConfirm",
+      "accountUpgradeMessage",
+      "accountUpgradeSubmit",
       "accountPasswordDetails",
+      "accountPasswordSummary",
       "accountPasswordForm",
       "oldAccountPassword",
       "changedAccountPassword",
@@ -658,14 +673,30 @@
     const selected = accountStore.accounts[runtime.selectedAccountId];
     dom.accountDialogClose.hidden = !activeAccount || runtime.accountDialogRequired;
     dom.accountLockButton.hidden = !activeAccount;
-    dom.accountPasswordDetails.hidden = !activeAccount || Boolean(activeAccount.cloud);
+    dom.accountPasswordDetails.hidden = !activeAccount;
+    dom.accountPasswordSummary.textContent = activeAccount?.cloud
+      ? "修改云端账号密码"
+      : "修改当前账号密码";
+    const passwordMinimum = activeAccount?.cloud ? 6 : 4;
+    dom.changedAccountPassword.minLength = passwordMinimum;
+    dom.changedAccountPasswordConfirm.minLength = passwordMinimum;
+    const canUpgradeLocal = Boolean(activeAccount && !activeAccount.cloud && cloudIsConfigured());
+    dom.accountUpgradeDetails.hidden = !canUpgradeLocal;
+    dom.accountUpgradeDetails.open = canUpgradeLocal;
+    if (canUpgradeLocal) {
+      dom.accountUpgradeCopy.textContent = `当前“${activeAccount.name}”只保存在这台设备。升级后会保留任务与进度，并可在其他浏览器登录。`;
+    }
     dom.cloudLoginForm.hidden = false;
     dom.cloudLoginSubmit.disabled = !cloudIsConfigured();
     dom.accountCreateSubmit.textContent = cloudIsConfigured() ? "注册并进入" : "创建并进入";
     if (cloudIsConfigured()) {
       updateCloudStatus(
         activeAccount?.cloud ? "ready" : "available",
-        activeAccount?.cloud ? "已连接云端，进度会自动同步" : "云端已就绪，可登录或注册同步账号",
+        activeAccount?.cloud
+          ? "已连接云端，进度会自动同步"
+          : activeAccount
+            ? "当前是本机账号，尚未同步；请在下方升级为云端账号"
+            : "云端已就绪，可登录或注册同步账号",
       );
     } else {
       updateCloudStatus("offline", "当前为本机账号模式；配置云端后即可跨浏览器同步");
@@ -704,7 +735,7 @@
                 </span>
                 ${
                   account.id === activeAccount?.id
-                    ? '<span class="account-card__badge">当前</span>'
+                    ? '<span class="account-card__badge">本机 · 当前</span>'
                     : ""
                 }
               </button>
@@ -729,6 +760,7 @@
     dom.accountLoginPassword.value = "";
     dom.accountLoginMessage.textContent = "";
     dom.accountCreateMessage.textContent = "";
+    dom.accountUpgradeMessage.textContent = "";
     dom.accountPasswordMessage.textContent = "";
     renderAccountDialog();
     if (!dom.accountDialog.open) dom.accountDialog.showModal();
@@ -834,6 +866,40 @@
     }
   }
 
+  async function upgradeLocalAccount(event) {
+    event.preventDefault();
+    if (!activeAccount || activeAccount.cloud || !cloudIsConfigured()) return;
+    const localAccount = activeAccount;
+    const password = dom.upgradeCloudPassword.value;
+    const confirmation = dom.upgradeCloudPasswordConfirm.value;
+    dom.accountUpgradeMessage.textContent = "";
+    if (password.length < 6) {
+      dom.accountUpgradeMessage.textContent = "云端密码至少需要 6 位。";
+      return;
+    }
+    if (password !== confirmation) {
+      dom.accountUpgradeMessage.textContent = "两次输入的云端密码不一致。";
+      return;
+    }
+    dom.accountUpgradeSubmit.disabled = true;
+    dom.accountUpgradeSubmit.textContent = "正在升级并同步…";
+    try {
+      const migratedState = normalizeState(JSON.parse(JSON.stringify(state)));
+      const data = await signUpCloudAccount(localAccount.name, password);
+      dom.accountUpgradeForm.reset();
+      await activateCloudAccount(data.user, localAccount.name, { stateOverride: migratedState });
+      await syncStateToCloud();
+      showToast("本机账号已升级为云端账号，可在其他设备登录");
+    } catch (error) {
+      console.error("Account upgrade failed:", error);
+      dom.accountUpgradeMessage.textContent =
+        error.message || "升级失败，请检查网络后重试。";
+    } finally {
+      dom.accountUpgradeSubmit.disabled = false;
+      dom.accountUpgradeSubmit.textContent = "升级并同步当前进度";
+    }
+  }
+
   async function changeAccountPassword(event) {
     event.preventDefault();
     if (!activeAccount) return;
@@ -841,12 +907,9 @@
     const nextPassword = dom.changedAccountPassword.value;
     const confirmation = dom.changedAccountPasswordConfirm.value;
     dom.accountPasswordMessage.textContent = "";
-    if (!(await verifyAccountPassword(activeAccount, oldPassword))) {
-      dom.accountPasswordMessage.textContent = "原密码不正确。";
-      return;
-    }
-    if (nextPassword.length < 4) {
-      dom.accountPasswordMessage.textContent = "新密码至少需要 4 位。";
+    const minimumLength = activeAccount.cloud ? 6 : 4;
+    if (nextPassword.length < minimumLength) {
+      dom.accountPasswordMessage.textContent = `新密码至少需要 ${minimumLength} 位。`;
       return;
     }
     if (nextPassword !== confirmation) {
@@ -855,14 +918,36 @@
     }
     dom.accountPasswordSubmit.disabled = true;
     try {
-      const salt = createSalt();
-      activeAccount.salt = salt;
-      activeAccount.passwordHash = await hashPassword(nextPassword, salt);
-      accountStore.accounts[activeAccount.id] = activeAccount;
-      saveAccountStore();
+      if (activeAccount.cloud) {
+        const client = initCloudClient();
+        const { error: loginError } = await client.auth.signInWithPassword({
+          email: cloudEmailForName(activeAccount.name),
+          password: oldPassword,
+        });
+        if (loginError) {
+          dom.accountPasswordMessage.textContent = "原云端密码不正确。";
+          return;
+        }
+        const { error: updateError } = await client.auth.updateUser({ password: nextPassword });
+        if (updateError) throw updateError;
+      } else {
+        if (!(await verifyAccountPassword(activeAccount, oldPassword))) {
+          dom.accountPasswordMessage.textContent = "原密码不正确。";
+          return;
+        }
+        const salt = createSalt();
+        activeAccount.salt = salt;
+        activeAccount.passwordHash = await hashPassword(nextPassword, salt);
+        accountStore.accounts[activeAccount.id] = activeAccount;
+        saveAccountStore();
+      }
       dom.accountPasswordForm.reset();
       dom.accountPasswordDetails.open = false;
-      showToast("当前账号密码已更新");
+      showToast(activeAccount.cloud ? "云端账号密码已更新" : "当前账号密码已更新");
+    } catch (error) {
+      console.error("Password update failed:", error);
+      dom.accountPasswordMessage.textContent =
+        error.message || "密码修改失败，请检查网络后重试。";
     } finally {
       dom.accountPasswordSubmit.disabled = false;
     }
@@ -1859,6 +1944,7 @@
     dom.accountLoginForm.addEventListener("submit", loginAccount);
     dom.cloudLoginForm.addEventListener("submit", cloudLogin);
     dom.accountCreateForm.addEventListener("submit", createAccount);
+    dom.accountUpgradeForm.addEventListener("submit", upgradeLocalAccount);
     dom.accountPasswordForm.addEventListener("submit", changeAccountPassword);
     dom.accountLockButton.addEventListener("click", lockCurrentAccount);
 
@@ -2085,7 +2171,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=24").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=25").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
