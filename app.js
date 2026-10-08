@@ -571,6 +571,16 @@
       "claimButton",
       "recycleButton",
       "emptyMission",
+      "previewSummary",
+      "previewBadge",
+      "previewWordCount",
+      "previewRoute",
+      "previewWords",
+      "previewQuiz",
+      "previewTrack",
+      "previewTrackDetail",
+      "previewCursor",
+      "previewClaimButton",
       "activeMission",
       "missionNumber",
       "activeMissionTitle",
@@ -1033,6 +1043,7 @@
     dom.claimButton.disabled = Boolean(pack && !complete);
 
     if (!pack) {
+      renderMissionPreview();
       dom.missionStatusLight.className = "status-light";
       dom.missionStatusTitle.textContent = state.recoveryWords.length
         ? `有 ${state.recoveryWords.length} 个词等待续领`
@@ -1160,6 +1171,141 @@
         review: "错词复习",
       }[route] || "听力词汇"
     );
+  }
+
+  function previewRecoveryWords(route, limit) {
+    return state.recoveryWords
+      .filter((id) => {
+        const entry = wordMap.get(id);
+        return (
+          entry &&
+          !state.learned[id] &&
+          (route === "auto" ||
+            route === "review" ||
+            (route === "scene" && entry.group === "scene") ||
+            (route === "jijing" && entry.group === "jijing"))
+        );
+      })
+      .slice(0, limit);
+  }
+
+  function previewNewWords(group, count, excluded = []) {
+    const source = group === "scene" ? sceneWords : jijingWords;
+    const excludedSet = new Set(excluded);
+    const selected = [];
+    let cursor = Math.max(0, Number(state.cursors[group]) || 0);
+    while (cursor < source.length && selected.length < count) {
+      const entry = source[cursor];
+      cursor += 1;
+      if (!state.learned[entry.id] && !excludedSet.has(entry.id)) selected.push(entry.id);
+    }
+    return selected;
+  }
+
+  function previewWordsForClaim(route, size) {
+    const selected = previewRecoveryWords(route, size);
+    const recoveredCount = selected.length;
+    let remaining = size - selected.length;
+
+    if (route === "review") {
+      selected.push(...takeReviewWords(remaining, selected));
+      return { ids: unique(selected), recoveredCount };
+    }
+
+    if (route === "scene") {
+      selected.push(...previewNewWords("scene", remaining, selected));
+      return { ids: unique(selected), recoveredCount };
+    }
+
+    if (route === "jijing") {
+      selected.push(...previewNewWords("jijing", remaining, selected));
+      return { ids: unique(selected), recoveredCount };
+    }
+
+    if (remaining > 0) {
+      selected.push(...previewNewWords("scene", remaining, selected));
+      remaining = size - selected.length;
+    }
+    if (remaining > 0) {
+      selected.push(...previewNewWords("jijing", remaining, selected));
+    }
+    return { ids: unique(selected), recoveredCount };
+  }
+
+  function previewTrackForClaim(route) {
+    if (route === "review" && !state.recoveryTracks.length) return null;
+    const recoveredTrack = state.recoveryTracks
+      .map((id) => trackMap.get(id))
+      .find((track) => track && !state.completedTracks[track.id]);
+    if (recoveredTrack) return recoveredTrack;
+
+    let cursor = Math.max(0, Number(state.cursors.track) || 0);
+    while (cursor < orderedTracks.length) {
+      const track = orderedTracks[cursor];
+      cursor += 1;
+      if (!state.completedTracks[track.id]) return track;
+    }
+    return null;
+  }
+
+  function renderMissionPreview() {
+    const size = Number(dom.packSize.value) || state.settings.packSize || 15;
+    const route = dom.claimRoute.value || state.settings.route || "auto";
+    const selection = previewWordsForClaim(route, size);
+    const entries = selection.ids.map((id) => wordMap.get(id)).filter(Boolean);
+    const track = previewTrackForClaim(route);
+    const quizCount = Math.min(10, entries.filter((entry) => entry.meaning).length);
+    const routeCopy = {
+      auto: "先场景高频，再机经词汇",
+      scene: "只练场景高频",
+      jijing: "只练机经词汇",
+      review: "集中复习测试错词",
+    };
+
+    dom.previewWordCount.textContent = String(entries.length);
+    dom.previewRoute.textContent = routeCopy[route] || routeName(route);
+    dom.previewQuiz.textContent = `${quizCount} 道`;
+    dom.previewWords.innerHTML = entries.length
+      ? entries
+          .slice(0, 4)
+          .map((entry) => `<span>${escapeHtml(entry.term)}</span>`)
+          .join("")
+      : '<span class="is-placeholder">当前路线暂无可领取词汇</span>';
+
+    if (track) {
+      dom.previewTrack.textContent = `${track.level} 分 · ${track.title}`;
+      dom.previewTrackDetail.textContent = `${
+        track.type === "basic" ? "基本功听写" : "词汇听写"
+      } · 正常 1×`;
+    } else {
+      dom.previewTrack.textContent = route === "review" ? "本次不配听写" : "听写已全部完成";
+      dom.previewTrackDetail.textContent =
+        route === "review" ? "错词路线专注复习词汇" : "仍可继续领取词汇任务";
+    }
+
+    dom.previewBadge.className = "mission-preview__badge";
+    if (selection.recoveredCount) {
+      dom.previewBadge.classList.add("is-recovery");
+      dom.previewBadge.textContent = `优先续领 ${selection.recoveredCount} 词`;
+      dom.previewSummary.textContent = "先接回上次没有完成的内容，再按当前路线补足本组。";
+    } else if (!entries.length) {
+      dom.previewBadge.classList.add("is-empty");
+      dom.previewBadge.textContent = "暂无内容";
+      dom.previewSummary.textContent =
+        route === "review" ? "先完成一组听音测试，答错的词会自动进入错词本。" : "这条路线已经学完，可以切换领取路线。";
+    } else {
+      dom.previewBadge.textContent = "可以领取";
+      dom.previewSummary.textContent = "领取后按“学词 → 听音测试 → 听写”依次完成。";
+    }
+
+    dom.previewCursor.textContent = `学习断点：场景 ${Math.min(
+      state.cursors.scene,
+      sceneWords.length,
+    )}/${sceneWords.length} · 机经 ${Math.min(state.cursors.jijing, jijingWords.length)}/${
+      jijingWords.length
+    } · 听写 ${Math.min(state.cursors.track, orderedTracks.length)}/${orderedTracks.length}`;
+    dom.previewClaimButton.disabled = !entries.length;
+    dom.previewClaimButton.textContent = selection.recoveredCount ? "续领并接上进度" : "按此方案领取";
   }
 
   function takeRecoveryWords(route, limit) {
@@ -1952,12 +2098,15 @@
     dom.packSize.addEventListener("change", () => {
       state.settings.packSize = Number(dom.packSize.value) || 15;
       saveState();
+      if (!state.activePack) renderMissionPreview();
     });
     dom.claimRoute.addEventListener("change", () => {
       state.settings.route = dom.claimRoute.value;
       saveState();
+      if (!state.activePack) renderMissionPreview();
     });
     dom.claimButton.addEventListener("click", claimMission);
+    dom.previewClaimButton.addEventListener("click", claimMission);
     dom.heroClaimButton.addEventListener("click", () => {
       if (state.activePack && !isPackComplete()) {
         dom.activeMission.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2172,7 +2321,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=26").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=27").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });

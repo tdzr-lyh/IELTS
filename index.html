@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=26" />
+    <link rel="manifest" href="./manifest.webmanifest?v=27" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=27" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -130,13 +130,51 @@
             <button class="secondary-button" id="recycleButton" type="button" disabled>回收未完成任务</button>
           </div>
 
-          <div class="empty-mission glass-panel" id="emptyMission">
-            <div class="empty-mission__stamp" aria-hidden="true">待领取</div>
-            <div>
-              <h3>你的任务夹还是空的</h3>
-              <p>第一次会从场景高频词开始，并配一段 5.5 基本功听写。之后每次都会紧接当前进度。</p>
+          <section class="mission-preview glass-panel" id="emptyMission" aria-labelledby="missionPreviewTitle">
+            <header class="mission-preview__header">
+              <div>
+                <p class="eyebrow">NEXT TASK PREVIEW</p>
+                <h3 id="missionPreviewTitle">下一份任务预览</h3>
+                <p id="previewSummary">按当前选项生成任务，领取前就能知道会练什么。</p>
+              </div>
+              <span class="mission-preview__badge" id="previewBadge">可以领取</span>
+            </header>
+
+            <div class="mission-preview__layout">
+              <article class="mission-preview__lead">
+                <span class="mission-preview__number" id="previewWordCount">15</span>
+                <div>
+                  <small>WORDS · 本组词量</small>
+                  <h4 id="previewRoute">自动安排</h4>
+                  <div class="mission-preview__words" id="previewWords" aria-label="下一组词汇示例"></div>
+                </div>
+              </article>
+
+              <div class="mission-preview__modules">
+                <article>
+                  <span aria-hidden="true">耳</span>
+                  <div>
+                    <small>听音辨义</small>
+                    <strong id="previewQuiz">10 道</strong>
+                    <p>英式发音 · 四选一</p>
+                  </div>
+                </article>
+                <article>
+                  <span aria-hidden="true">写</span>
+                  <div>
+                    <small>配套听写</small>
+                    <strong id="previewTrack">5.5 分基础</strong>
+                    <p id="previewTrackDetail">自动接续下一组</p>
+                  </div>
+                </article>
+              </div>
             </div>
-          </div>
+
+            <footer class="mission-preview__footer">
+              <p id="previewCursor">学习断点正在读取…</p>
+              <button class="primary-button" id="previewClaimButton" type="button">按此方案领取</button>
+            </footer>
+          </section>
 
           <article class="mission-ticket glass-panel" id="activeMission" hidden>
             <header class="mission-ticket__header">
@@ -537,9 +575,9 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=26"></script>
+    <script src="./listening-data.js?v=27"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=26"></script>
+    <script src="./app.js?v=27"></script>
   </body>
 </html>

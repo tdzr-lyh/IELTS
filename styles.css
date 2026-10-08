@@ -593,39 +593,209 @@ button:disabled {
   font-size: 10px;
 }
 
-.empty-mission {
-  display: flex;
-  align-items: center;
-  gap: 28px;
+.mission-preview {
+  position: relative;
   margin-top: 20px;
-  padding: 36px;
+  padding: 28px;
+  overflow: hidden;
   border-radius: var(--radius-xl);
 }
 
-.empty-mission__stamp {
-  display: grid;
-  place-items: center;
-  flex: 0 0 112px;
-  aspect-ratio: 1;
-  border: 1px dashed rgba(78, 145, 218, 0.46);
+.mission-preview::after {
+  position: absolute;
+  top: -92px;
+  right: -70px;
+  width: 260px;
+  height: 260px;
+  border: 1px solid rgba(95, 159, 232, 0.18);
   border-radius: 50%;
-  color: var(--blue-deep);
-  font-family: Georgia, serif;
-  font-size: 17px;
-  transform: rotate(-8deg);
+  box-shadow:
+    0 0 0 34px rgba(233, 159, 190, 0.06),
+    0 0 0 68px rgba(95, 159, 232, 0.045);
+  content: "";
+  pointer-events: none;
 }
 
-.empty-mission h3 {
+.mission-preview__header,
+.mission-preview__footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.mission-preview__header .eyebrow {
+  margin-bottom: 5px;
+}
+
+.mission-preview__header h3 {
   margin: 0;
   color: var(--ink-strong);
   font-family: Georgia, "Songti SC", serif;
-  font-size: 28px;
+  font-size: 27px;
   font-weight: 500;
 }
 
-.empty-mission p {
-  margin: 7px 0 0;
+.mission-preview__header p:not(.eyebrow) {
+  margin: 5px 0 0;
   color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.mission-preview__badge {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid rgba(62, 170, 145, 0.2);
+  border-radius: 999px;
+  color: #287e6b;
+  background: rgba(124, 207, 189, 0.14);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.mission-preview__badge.is-recovery {
+  border-color: rgba(245, 198, 109, 0.32);
+  color: #9a681e;
+  background: rgba(245, 198, 109, 0.16);
+}
+
+.mission-preview__badge.is-empty {
+  border-color: rgba(189, 96, 124, 0.22);
+  color: var(--danger);
+  background: rgba(233, 159, 190, 0.12);
+}
+
+.mission-preview__layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.mission-preview__lead,
+.mission-preview__modules article {
+  border: 1px solid rgba(83, 112, 153, 0.12);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.mission-preview__lead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+  min-height: 150px;
+  padding: 22px;
+  border-radius: 21px;
+}
+
+.mission-preview__number {
+  min-width: 100px;
+  color: var(--ink-strong);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(58px, 7vw, 82px);
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+}
+
+.mission-preview__lead small,
+.mission-preview__modules small {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.mission-preview__lead h4 {
+  margin: 6px 0 13px;
+  color: var(--ink-strong);
+  font-size: 18px;
+}
+
+.mission-preview__words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.mission-preview__words span {
+  max-width: 150px;
+  padding: 5px 9px;
+  overflow: hidden;
+  border-radius: 8px;
+  color: var(--blue-deep);
+  background: linear-gradient(135deg, rgba(223, 242, 255, 0.9), rgba(255, 229, 239, 0.6));
+  font-family: Georgia, serif;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mission-preview__words span.is-placeholder {
+  color: var(--muted);
+  background: rgba(146, 156, 177, 0.1);
+  font-family: inherit;
+}
+
+.mission-preview__modules {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mission-preview__modules article {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 15px 17px;
+  border-radius: 17px;
+}
+
+.mission-preview__modules article > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  color: var(--blue-deep);
+  background: linear-gradient(145deg, var(--blue-pale), var(--pink-pale));
+  font-family: "Songti SC", Georgia, serif;
+  font-size: 17px;
+}
+
+.mission-preview__modules strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-strong);
+  font-size: 16px;
+}
+
+.mission-preview__modules p {
+  margin: 1px 0 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.mission-preview__footer {
+  margin-top: 14px;
+  padding: 14px 0 0;
+  border-top: 1px solid rgba(83, 112, 153, 0.1);
+}
+
+.mission-preview__footer p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.mission-preview__footer .primary-button {
+  min-width: 146px;
 }
 
 .mission-ticket {
@@ -2144,6 +2314,15 @@ dialog::backdrop {
     grid-column: 1 / -1;
   }
 
+  .mission-preview__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-preview__modules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+
   .mission-ticket {
     padding: 24px 17px;
   }
@@ -2350,21 +2529,52 @@ dialog::backdrop {
     padding-inline: 5px;
   }
 
-  .empty-mission {
+  .mission-preview {
+    padding: 21px 17px;
+  }
+
+  .mission-preview__header {
     align-items: flex-start;
+  }
+
+  .mission-preview__header h3 {
+    font-size: 23px;
+  }
+
+  .mission-preview__header p:not(.eyebrow) {
+    max-width: 250px;
+    font-size: 11px;
+  }
+
+  .mission-preview__badge {
+    padding: 6px 9px;
+    font-size: 9px;
+  }
+
+  .mission-preview__lead {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 13px;
+    min-height: 0;
+    padding: 18px 15px;
+  }
+
+  .mission-preview__number {
+    min-width: 0;
+    font-size: 56px;
+  }
+
+  .mission-preview__modules {
+    grid-template-columns: 1fr;
+  }
+
+  .mission-preview__footer {
+    align-items: stretch;
     flex-direction: column;
-    gap: 17px;
-    padding: 25px;
+    gap: 12px;
   }
 
-  .empty-mission__stamp {
-    flex-basis: 82px;
-    width: 82px;
-    font-size: 13px;
-  }
-
-  .empty-mission h3 {
-    font-size: 24px;
+  .mission-preview__footer .primary-button {
+    width: 100%;
   }
 
   .mission-ticket__header {
