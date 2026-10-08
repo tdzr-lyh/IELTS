@@ -1078,7 +1078,7 @@
         <span class="mission-step__number">${wordsDone ? "✓" : "01"}</span>
         <div>
           <h4>学习本组词汇</h4>
-          <p>逐个听正常 1× 发音，确认含义后打勾。已完成 ${completedWords}/${pack.wordIds.length}。</p>
+          <p>逐个听正常 1× 英式发音，确认含义后打勾。已完成 ${completedWords}/${pack.wordIds.length}。</p>
         </div>
         <button class="secondary-button step-action" type="button" data-mark-all-words>
           ${wordsDone ? "取消全选" : "全部标记"}
@@ -1117,7 +1117,7 @@
           <p>${
             pack.quizDone
               ? `最近得分 ${pack.quizScore}/${pack.quizTotal}，错词已自动收入错词本。`
-              : `从本组抽取 ${quizCount} 题：播放单词发音，从四个随机选项中选择正确含义。`
+              : `从本组抽取 ${quizCount} 题：播放英式发音，从四个随机选项中选择正确含义。`
           }</p>
         </div>
         <button class="primary-button step-action" type="button" data-start-quiz>
@@ -1358,11 +1358,13 @@
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(word);
     const voices = window.speechSynthesis.getVoices();
-    utterance.voice =
-      voices.find((voice) => /^en-GB/i.test(voice.lang)) ||
-      voices.find((voice) => /^en/i.test(voice.lang)) ||
-      null;
-    utterance.lang = utterance.voice?.lang || "en-GB";
+    const britishVoice = voices.find((voice) => /^en-GB/i.test(voice.lang));
+    if (!britishVoice) {
+      showToast("英式发音音源暂时不可用，请联网后重试");
+      return;
+    }
+    utterance.voice = britishVoice;
+    utterance.lang = "en-GB";
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.volume = 1;
@@ -1384,9 +1386,8 @@
   function pronunciationSources(word) {
     const encoded = encodeURIComponent(word.trim());
     return [
+      // 有道 type=1 为英式发音。严格模式下不加入 type=2（美式）或未指定地区的音源。
       `https://dict.youdao.com/dictvoice?audio=${encoded}&type=1`,
-      `https://dict.youdao.com/dictvoice?audio=${encoded}&type=2`,
-      `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=en&q=${encoded}`,
     ];
   }
 
@@ -1791,7 +1792,7 @@
     runtime.dialogIndex = 0;
     dom.dialogEyebrow.textContent = eyebrow;
     dom.dialogTitle.textContent = title;
-    dom.dialogSubtitle.textContent = `${entries.length} 词 · 点击单词可播放正常 1× 发音`;
+    dom.dialogSubtitle.textContent = `${entries.length} 词 · 点击单词可播放正常 1× 英式发音`;
     renderDialogWord();
     if (typeof dom.chapterDialog.showModal === "function") dom.chapterDialog.showModal();
     else dom.chapterDialog.setAttribute("open", "");
@@ -2171,7 +2172,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=25").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=26").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
