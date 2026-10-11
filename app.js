@@ -20,6 +20,7 @@
     dialogIndex: 0,
     answerTrackId: "",
     quiz: null,
+    spellingQuiz: null,
     toastTimer: null,
     deferredInstallPrompt: null,
     audioTrackId: "",
@@ -113,6 +114,8 @@
       stats: {
         questions: 0,
         correct: 0,
+        spellingQuestions: 0,
+        spellingCorrect: 0,
         missionsCompleted: 0,
       },
     };
@@ -121,6 +124,16 @@
   function normalizeState(candidate) {
     const fallback = defaultState();
     if (!candidate || typeof candidate !== "object") return fallback;
+    const activePack = candidate.activePack
+      ? {
+          ...candidate.activePack,
+          spellingDone:
+            candidate.activePack.spellingDone ??
+            Boolean(candidate.activePack.completionRecorded),
+          spellingScore: Number(candidate.activePack.spellingScore || 0),
+          spellingTotal: Number(candidate.activePack.spellingTotal || 0),
+        }
+      : null;
     return {
       ...fallback,
       ...candidate,
@@ -132,7 +145,7 @@
       cursors: { ...fallback.cursors, ...(candidate.cursors || {}) },
       completedTracks: candidate.completedTracks || {},
       stats: { ...fallback.stats, ...(candidate.stats || {}) },
-      activePack: candidate.activePack || null,
+      activePack,
     };
   }
 
@@ -624,6 +637,16 @@
       "quizOptions",
       "quizFeedback",
       "quizNextButton",
+      "spellingDialog",
+      "spellingPosition",
+      "spellingProgressBar",
+      "spellingSoundPulse",
+      "spellingPlayButton",
+      "spellingForm",
+      "spellingInput",
+      "spellingSubmitButton",
+      "spellingFeedback",
+      "spellingNextButton",
       "audioDock",
       "trainingAudio",
       "wordPronunciationAudio",
@@ -982,8 +1005,9 @@
     if (!pack) return false;
     const wordsDone = pack.wordIds.every((id) => pack.completedWordIds.includes(id));
     const quizDone = Boolean(pack.quizDone);
+    const spellingDone = Boolean(pack.spellingDone);
     const trackDone = !pack.trackId || Boolean(pack.trackDone);
-    return wordsDone && quizDone && trackDone;
+    return wordsDone && quizDone && spellingDone && trackDone;
   }
 
   function packProgress(pack = state.activePack) {
@@ -991,7 +1015,7 @@
     const wordRatio = pack.wordIds.length
       ? pack.wordIds.filter((id) => pack.completedWordIds.includes(id)).length / pack.wordIds.length
       : 1;
-    const parts = [wordRatio, pack.quizDone ? 1 : 0];
+    const parts = [wordRatio, pack.quizDone ? 1 : 0, pack.spellingDone ? 1 : 0];
     if (pack.trackId) parts.push(pack.trackDone ? 1 : 0);
     const percent = Math.round((parts.reduce((sum, value) => sum + value, 0) / parts.length) * 100);
     return { percent, parts };
@@ -1082,6 +1106,7 @@
     const wordsDone = completedWords === pack.wordIds.length;
     const track = pack.trackId ? trackMap.get(pack.trackId) : null;
     const quizCount = Math.min(10, pack.wordIds.filter((id) => wordMap.get(id)?.meaning).length);
+    const spellingCount = Math.min(8, spellingEntriesForPack(pack).length);
     const cards = [];
 
     cards.push(`
@@ -1128,7 +1153,7 @@
           <p>${
             pack.quizDone
               ? `最近得分 ${pack.quizScore}/${pack.quizTotal}，错词已自动收入错词本。`
-              : `从本组抽取 ${quizCount} 题：播放英式发音，从四个随机选项中选择正确含义。`
+              : `从本组抽取 ${quizCount} 题：干扰项优先来自本组词汇和近音词。`
           }</p>
         </div>
         <button class="primary-button step-action" type="button" data-start-quiz>
@@ -1137,10 +1162,27 @@
       </section>
     `);
 
+    cards.push(`
+      <section class="mission-step ${pack.spellingDone ? "is-complete" : ""}">
+        <span class="mission-step__number">${pack.spellingDone ? "✓" : "03"}</span>
+        <div>
+          <h4>完成听音拼写测试</h4>
+          <p>${
+            pack.spellingDone
+              ? `最近拼对 ${pack.spellingScore}/${pack.spellingTotal}，拼错的词已加入错词本。`
+              : `从本组抽取 ${spellingCount} 题：只听英式发音，完整输入听到的单词或词组。`
+          }</p>
+        </div>
+        <button class="primary-button step-action" type="button" data-start-spelling>
+          ${pack.spellingDone ? "再拼一次" : "开始拼写"}
+        </button>
+      </section>
+    `);
+
     if (track) {
       cards.push(`
         <section class="mission-step ${pack.trackDone ? "is-complete" : ""}">
-          <span class="mission-step__number">${pack.trackDone ? "✓" : "03"}</span>
+          <span class="mission-step__number">${pack.trackDone ? "✓" : "04"}</span>
           <div>
             <h4>${escapeHtml(track.level)} 分听写 · ${escapeHtml(track.title)}</h4>
             <p>先完整听一遍，再分段听写和核对。音频固定正常 1×，点击后才加载。</p>
@@ -1295,7 +1337,7 @@
         route === "review" ? "先完成一组听音测试，答错的词会自动进入错词本。" : "这条路线已经学完，可以切换领取路线。";
     } else {
       dom.previewBadge.textContent = "可以领取";
-      dom.previewSummary.textContent = "领取后按“学词 → 听音测试 → 听写”依次完成。";
+      dom.previewSummary.textContent = "领取后按“学词 → 辨义 → 拼写 → 听写”依次完成。";
     }
 
     dom.previewCursor.textContent = `学习断点：场景 ${Math.min(
@@ -1427,6 +1469,9 @@
       quizDone: false,
       quizScore: 0,
       quizTotal: 0,
+      spellingDone: false,
+      spellingScore: 0,
+      spellingTotal: 0,
       trackId: selectTrackForClaim(route),
       trackDone: false,
       wasRecovered: selection.wasRecovered,
@@ -1496,6 +1541,18 @@
     renderAll();
   }
 
+  function activeSoundPulse() {
+    if (dom.spellingDialog?.open) return dom.spellingSoundPulse;
+    if (dom.quizDialog?.open) return dom.quizSoundPulse;
+    return null;
+  }
+
+  function setSoundPulseSpeaking(speaking) {
+    [dom.quizSoundPulse, dom.spellingSoundPulse].forEach((pulse) =>
+      pulse?.classList.toggle("is-speaking", speaking && pulse === activeSoundPulse()),
+    );
+  }
+
   function speakWithSystemVoice(word, token) {
     if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
       showToast("发音服务暂时不可用，请检查网络后重试");
@@ -1515,14 +1572,14 @@
     utterance.pitch = 1;
     utterance.volume = 1;
     utterance.onstart = () => {
-      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.add("is-speaking");
+      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(true);
     };
     utterance.onend = () => {
-      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.remove("is-speaking");
+      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(false);
     };
     utterance.onerror = () => {
       if (token === runtime.pronunciationToken) {
-        dom.quizSoundPulse?.classList.remove("is-speaking");
+        setSoundPulseSpeaking(false);
         showToast("发音加载失败，请检查网络后重试");
       }
     };
@@ -1552,10 +1609,10 @@
     wordAudio.currentTime = 0;
     wordAudio.playbackRate = 1;
     wordAudio.onplay = () => {
-      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.add("is-speaking");
+      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(true);
     };
     wordAudio.onended = () => {
-      if (token === runtime.pronunciationToken) dom.quizSoundPulse?.classList.remove("is-speaking");
+      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(false);
     };
     wordAudio.onerror = () => {
       if (token !== runtime.pronunciationToken) return;
@@ -1566,7 +1623,7 @@
       result.catch((error) => {
         if (token !== runtime.pronunciationToken) return;
         if (error?.name === "NotAllowedError") {
-          dom.quizSoundPulse?.classList.remove("is-speaking");
+          setSoundPulseSpeaking(false);
           showToast("浏览器阻止了自动播放，请再点一次发音按钮");
           return;
         }
@@ -1596,27 +1653,94 @@
     return shuffle(valid).slice(0, Math.min(10, valid.length));
   }
 
+  function pronunciationKey(term) {
+    return String(term || "")
+      .toLowerCase()
+      .split(/[\/=]/)[0]
+      .replace(/tion/g, "shun")
+      .replace(/sion/g, "zhun")
+      .replace(/ture/g, "cher")
+      .replace(/ph/g, "f")
+      .replace(/ght/g, "t")
+      .replace(/kn/g, "n")
+      .replace(/wr/g, "r")
+      .replace(/wh/g, "w")
+      .replace(/qu/g, "kw")
+      .replace(/ck/g, "k")
+      .replace(/dg/g, "j")
+      .replace(/tch/g, "ch")
+      .replace(/c/g, "k")
+      .replace(/x/g, "ks")
+      .replace(/[aeiouy]+/g, "a")
+      .replace(/(.)\1+/g, "$1")
+      .replace(/[^a-z]/g, "");
+  }
+
+  function editSimilarity(left, right) {
+    if (!left || !right) return 0;
+    const rows = Array.from({ length: left.length + 1 }, (_, index) => index);
+    for (let column = 1; column <= right.length; column += 1) {
+      let diagonal = rows[0];
+      rows[0] = column;
+      for (let row = 1; row <= left.length; row += 1) {
+        const previous = rows[row];
+        rows[row] = Math.min(
+          rows[row] + 1,
+          rows[row - 1] + 1,
+          diagonal + (left[row - 1] === right[column - 1] ? 0 : 1),
+        );
+        diagonal = previous;
+      }
+    }
+    return 1 - rows[left.length] / Math.max(left.length, right.length);
+  }
+
+  function soundSimilarity(leftTerm, rightTerm) {
+    const left = pronunciationKey(leftTerm);
+    const right = pronunciationKey(rightTerm);
+    if (!left || !right) return 0;
+    let score = editSimilarity(left, right);
+    if (left.slice(0, 2) === right.slice(0, 2)) score += 0.16;
+    if (left.slice(-2) === right.slice(-2)) score += 0.12;
+    if (Math.abs(left.length - right.length) <= 1) score += 0.08;
+    return score;
+  }
+
   function buildOptions(entry) {
+    const pack = state.activePack;
     const sameGroup = entry.group === "scene" ? sceneWords : jijingWords;
-    const candidates = shuffle(
+    const isCandidate = (item) =>
+      item &&
+      item.id !== entry.id &&
+      item.meaning &&
+      item.meaning !== entry.meaning &&
+      item.meaning.length <= 38;
+    const currentPack = shuffle(
+      (pack?.wordIds || []).map((id) => wordMap.get(id)).filter(isCandidate),
+    );
+    const similarSound = sameGroup
+      .filter(isCandidate)
+      .map((item) => ({ item, score: soundSimilarity(entry.term, item.term) }))
+      .filter(({ score }) => score >= 0.44)
+      .sort((left, right) => right.score - left.score)
+      .map(({ item }) => item);
+    const sameScene = shuffle(
       sameGroup.filter(
-        (item) =>
-          item.id !== entry.id &&
-          item.meaning &&
-          item.meaning !== entry.meaning &&
-          item.meaning.length <= 38,
+        (item) => isCandidate(item) && item.source === entry.source,
       ),
     );
+    const candidates = [
+      ...similarSound.slice(0, 1),
+      ...currentPack.slice(0, 2),
+      ...similarSound.slice(1),
+      ...sameScene,
+      ...shuffle(sameGroup.filter(isCandidate)),
+      ...shuffle(allWords.filter(isCandidate)),
+    ];
     const meanings = [entry.meaning];
     for (const candidate of candidates) {
       if (!meanings.includes(candidate.meaning)) meanings.push(candidate.meaning);
       if (meanings.length === 4) break;
-    }
-    if (meanings.length < 4) {
-      for (const candidate of shuffle(allWords)) {
-        if (candidate.meaning && !meanings.includes(candidate.meaning)) meanings.push(candidate.meaning);
-        if (meanings.length === 4) break;
-      }
     }
     return shuffle(meanings);
   }
@@ -1726,6 +1850,131 @@
     runtime.quiz = null;
     renderAll();
     showToast(`测试完成：${quiz.correct}/${quiz.entries.length}`);
+  }
+
+  function spellingEntriesForPack(pack = state.activePack) {
+    if (!pack) return [];
+    return pack.wordIds
+      .map((id) => wordMap.get(id))
+      .filter(
+        (entry) =>
+          entry?.term &&
+          entry.meaning &&
+          /^[a-z][a-z' -]*$/i.test(entry.term.trim()),
+      );
+  }
+
+  function normalizedSpelling(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .replace(/\s+/g, " ");
+  }
+
+  function openSpellingQuiz() {
+    const valid = spellingEntriesForPack();
+    const entries = shuffle(valid).slice(0, Math.min(8, valid.length));
+    if (!entries.length) {
+      showToast("本组没有适合进行拼写测试的词汇");
+      return;
+    }
+    runtime.spellingQuiz = {
+      entries,
+      index: 0,
+      correct: 0,
+      answered: false,
+      results: [],
+    };
+    if (typeof dom.spellingDialog.showModal === "function") dom.spellingDialog.showModal();
+    else dom.spellingDialog.setAttribute("open", "");
+    renderSpellingQuestion();
+    setTimeout(() => speakWord(entries[0].term), 180);
+  }
+
+  function renderSpellingQuestion() {
+    const quiz = runtime.spellingQuiz;
+    if (!quiz) return;
+    quiz.answered = false;
+    dom.spellingPosition.textContent = `${quiz.index + 1} / ${quiz.entries.length}`;
+    dom.spellingProgressBar.style.width = `${(quiz.index / quiz.entries.length) * 100}%`;
+    dom.spellingInput.value = "";
+    dom.spellingInput.disabled = false;
+    dom.spellingSubmitButton.disabled = false;
+    dom.spellingFeedback.textContent = "";
+    dom.spellingFeedback.className = "spelling-feedback";
+    dom.spellingNextButton.hidden = true;
+    dom.spellingNextButton.textContent =
+      quiz.index === quiz.entries.length - 1 ? "查看结果" : "下一题";
+    window.setTimeout(() => dom.spellingInput.focus(), 80);
+  }
+
+  function answerSpelling(event) {
+    event.preventDefault();
+    const quiz = runtime.spellingQuiz;
+    if (!quiz || quiz.answered) return;
+    const entry = quiz.entries[quiz.index];
+    const answer = normalizedSpelling(dom.spellingInput.value);
+    if (!answer) {
+      dom.spellingFeedback.textContent = "先输入你听到的英文。";
+      dom.spellingInput.focus();
+      return;
+    }
+
+    const correct = answer === normalizedSpelling(entry.term);
+    quiz.answered = true;
+    quiz.results.push({ id: entry.id, answer, correct });
+    if (correct) quiz.correct += 1;
+    state.stats.questions += 1;
+    state.stats.spellingQuestions += 1;
+
+    if (correct) {
+      state.stats.correct += 1;
+      state.stats.spellingCorrect += 1;
+      const oldCount = Number(state.wrongCounts[entry.id] || 0);
+      if (oldCount > 1) state.wrongCounts[entry.id] = oldCount - 1;
+      else delete state.wrongCounts[entry.id];
+    } else {
+      state.wrongCounts[entry.id] = Number(state.wrongCounts[entry.id] || 0) + 1;
+    }
+
+    dom.spellingInput.disabled = true;
+    dom.spellingSubmitButton.disabled = true;
+    dom.spellingFeedback.classList.add(correct ? "is-correct" : "is-wrong");
+    dom.spellingFeedback.textContent = correct
+      ? `拼写正确：${entry.term} · ${entry.meaning}`
+      : `正确拼写：${entry.term} · ${entry.meaning}`;
+    dom.spellingNextButton.hidden = false;
+    saveState();
+    renderOverview();
+    renderBookCounts();
+  }
+
+  function nextSpellingQuestion() {
+    const quiz = runtime.spellingQuiz;
+    if (!quiz || !quiz.answered) return;
+    if (quiz.index < quiz.entries.length - 1) {
+      quiz.index += 1;
+      renderSpellingQuestion();
+      speakWord(quiz.entries[quiz.index].term);
+      return;
+    }
+    finishSpellingQuiz();
+  }
+
+  function finishSpellingQuiz() {
+    const quiz = runtime.spellingQuiz;
+    const pack = state.activePack;
+    if (!quiz || !pack) return;
+    pack.spellingDone = true;
+    pack.spellingScore = quiz.correct;
+    pack.spellingTotal = quiz.entries.length;
+    saveState();
+    dom.spellingProgressBar.style.width = "100%";
+    dom.spellingDialog.close();
+    runtime.spellingQuiz = null;
+    renderAll();
+    showToast(`拼写测试完成：${quiz.correct}/${quiz.entries.length}`);
   }
 
   function renderBookCounts() {
@@ -2136,6 +2385,10 @@
         openQuiz();
         return;
       }
+      if (event.target.closest("[data-start-spelling]")) {
+        openSpellingQuiz();
+        return;
+      }
       const trackButton = event.target.closest("[data-play-track]");
       if (trackButton) {
         playTrack(trackButton.dataset.playTrack);
@@ -2225,7 +2478,17 @@
     dom.quizNextButton.addEventListener("click", nextQuizQuestion);
     dom.quizDialog.addEventListener("close", () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-      dom.quizSoundPulse.classList.remove("is-speaking");
+      setSoundPulseSpeaking(false);
+    });
+    dom.spellingPlayButton.addEventListener("click", () => {
+      const entry = runtime.spellingQuiz?.entries[runtime.spellingQuiz.index];
+      if (entry) speakWord(entry.term);
+    });
+    dom.spellingForm.addEventListener("submit", answerSpelling);
+    dom.spellingNextButton.addEventListener("click", nextSpellingQuestion);
+    dom.spellingDialog.addEventListener("close", () => {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      setSoundPulseSpeaking(false);
     });
 
     dom.audioPlayButton.addEventListener("click", () => {
@@ -2321,7 +2584,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=27").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=28").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
