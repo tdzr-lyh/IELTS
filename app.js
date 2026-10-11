@@ -32,6 +32,9 @@
     cloudDirty: false,
     cloudRefreshInFlight: false,
     pronunciationToken: 0,
+    pronunciationAttempt: 0,
+    pronunciationTimer: null,
+    pronunciationAdvanceTimer: null,
   };
 
   let audio;
@@ -1553,7 +1556,15 @@
     );
   }
 
+  function clearPronunciationTimers() {
+    clearTimeout(runtime.pronunciationTimer);
+    clearTimeout(runtime.pronunciationAdvanceTimer);
+    runtime.pronunciationTimer = null;
+    runtime.pronunciationAdvanceTimer = null;
+  }
+
   function speakWithSystemVoice(word, token) {
+    clearPronunciationTimers();
     if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
       showToast("发音服务暂时不可用，请检查网络后重试");
       return;
@@ -1589,60 +1600,175 @@
   function pronunciationSources(word) {
     const encoded = encodeURIComponent(word.trim());
     return [
-      // 有道 type=1 为英式发音。严格模式下不加入 type=2（美式）或未指定地区的音源。
+      // 有道 type=1 为英式发音；失败后会拆词继续请求 type=1。
       `https://dict.youdao.com/dictvoice?audio=${encoded}&type=1`,
     ];
+  }
+
+  function pronunciationParts(word) {
+    return String(word || "").match(/[A-Za-z]+(?:['’][A-Za-z]+)*|\d+(?:\.\d+)?/g) || [];
+  }
+
+  function playPronunciationParts(word, token) {
+    const parts = pronunciationParts(word);
+    if (parts.length <= 1 || !wordAudio) {
+      speakWithSystemVoice(word, token);
+      return;
+    }
+
+    let partIndex = 0;
+    const playNext = () => {
+      if (token !== runtime.pronunciationToken) return;
+      if (partIndex >= parts.length) {
+        clearPronunciationTimers();
+        setSoundPulseSpeaking(false);
+        return;
+      }
+
+      const part = parts[partIndex];
+      partIndex += 1;
+      const attempt = ++runtime.pronunciationAttempt;
+      let advanced = false;
+      const advance = () => {
+        if (
+          advanced ||
+          token !== runtime.pronunciationToken ||
+          attempt !== runtime.pronunciationAttempt
+        ) return;
+        advanced = true;
+        clearPronunciationTimers();
+        wordAudio.pause();
+        runtime.pronunciationAdvanceTimer = setTimeout(playNext, 90);
+      };
+      const failSequence = () => {
+        if (
+          advanced ||
+          token !== runtime.pronunciationToken ||
+          attempt !== runtime.pronunciationAttempt
+        ) return;
+        advanced = true;
+        clearPronunciationTimers();
+        speakWithSystemVoice(word, token);
+      };
+
+      wordAudio.pause();
+      wordAudio.src = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(part)}&type=1`;
+      wordAudio.currentTime = 0;
+      wordAudio.playbackRate = 1;
+      wordAudio.onplaying = () => {
+        if (attempt !== runtime.pronunciationAttempt) return;
+        clearTimeout(runtime.pronunciationTimer);
+        if (token === runtime.pronunciationToken) setSoundPulseSpeaking(true);
+      };
+      wordAudio.onwaiting = () => {
+        if (attempt !== runtime.pronunciationAttempt) return;
+        clearTimeout(runtime.pronunciationTimer);
+        runtime.pronunciationTimer = setTimeout(failSequence, 4500);
+      };
+      wordAudio.onended = advance;
+      wordAudio.onerror = failSequence;
+      runtime.pronunciationTimer = setTimeout(failSequence, 5500);
+      const result = wordAudio.play();
+      if (result) {
+        result.catch((error) => {
+          if (
+            token !== runtime.pronunciationToken ||
+            attempt !== runtime.pronunciationAttempt
+          ) return;
+          if (error?.name === "NotAllowedError") {
+            clearPronunciationTimers();
+            setSoundPulseSpeaking(false);
+            showToast("浏览器阻止了自动播放，请再点一次发音按钮");
+            return;
+          }
+          failSequence();
+        });
+      }
+    };
+    playNext();
   }
 
   function playPronunciationSource(word, sources, index, token) {
     if (token !== runtime.pronunciationToken) return;
     if (index >= sources.length) {
-      speakWithSystemVoice(word, token);
+      playPronunciationParts(word, token);
       return;
     }
     if (!wordAudio) {
       speakWithSystemVoice(word, token);
       return;
     }
+    clearPronunciationTimers();
+    const attempt = ++runtime.pronunciationAttempt;
+    let advanced = false;
+    const tryNextSource = () => {
+      if (
+        advanced ||
+        token !== runtime.pronunciationToken ||
+        attempt !== runtime.pronunciationAttempt
+      ) return;
+      advanced = true;
+      clearPronunciationTimers();
+      wordAudio.pause();
+      playPronunciationSource(word, sources, index + 1, token);
+    };
     wordAudio.pause();
     wordAudio.src = sources[index];
     wordAudio.currentTime = 0;
     wordAudio.playbackRate = 1;
-    wordAudio.onplay = () => {
+    wordAudio.onplaying = () => {
+      if (attempt !== runtime.pronunciationAttempt) return;
+      clearTimeout(runtime.pronunciationTimer);
       if (token === runtime.pronunciationToken) setSoundPulseSpeaking(true);
     };
+    wordAudio.onwaiting = () => {
+      if (attempt !== runtime.pronunciationAttempt) return;
+      clearTimeout(runtime.pronunciationTimer);
+      runtime.pronunciationTimer = setTimeout(tryNextSource, 4500);
+    };
     wordAudio.onended = () => {
+      if (attempt !== runtime.pronunciationAttempt) return;
+      clearPronunciationTimers();
       if (token === runtime.pronunciationToken) setSoundPulseSpeaking(false);
     };
-    wordAudio.onerror = () => {
-      if (token !== runtime.pronunciationToken) return;
-      playPronunciationSource(word, sources, index + 1, token);
-    };
+    wordAudio.onerror = tryNextSource;
+    runtime.pronunciationTimer = setTimeout(tryNextSource, 5500);
     const result = wordAudio.play();
     if (result) {
       result.catch((error) => {
-        if (token !== runtime.pronunciationToken) return;
+        if (
+          token !== runtime.pronunciationToken ||
+          attempt !== runtime.pronunciationAttempt
+        ) return;
         if (error?.name === "NotAllowedError") {
+          clearPronunciationTimers();
           setSoundPulseSpeaking(false);
           showToast("浏览器阻止了自动播放，请再点一次发音按钮");
           return;
         }
-        playPronunciationSource(word, sources, index + 1, token);
+        tryNextSource();
       });
     }
   }
 
-  function speakWord(word) {
-    const cleanWord = String(word || "").trim();
-    if (!cleanWord) return;
+  function stopPronunciation() {
     runtime.pronunciationToken += 1;
-    const token = runtime.pronunciationToken;
+    runtime.pronunciationAttempt = 0;
+    clearPronunciationTimers();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     if (wordAudio) {
       wordAudio.pause();
       wordAudio.removeAttribute("src");
       wordAudio.load();
     }
+    setSoundPulseSpeaking(false);
+  }
+
+  function speakWord(word) {
+    const cleanWord = String(word || "").trim();
+    if (!cleanWord) return;
+    stopPronunciation();
+    const token = runtime.pronunciationToken;
     playPronunciationSource(cleanWord, pronunciationSources(cleanWord), 0, token);
   }
 
@@ -2477,8 +2603,7 @@
     });
     dom.quizNextButton.addEventListener("click", nextQuizQuestion);
     dom.quizDialog.addEventListener("close", () => {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-      setSoundPulseSpeaking(false);
+      stopPronunciation();
     });
     dom.spellingPlayButton.addEventListener("click", () => {
       const entry = runtime.spellingQuiz?.entries[runtime.spellingQuiz.index];
@@ -2487,8 +2612,7 @@
     dom.spellingForm.addEventListener("submit", answerSpelling);
     dom.spellingNextButton.addEventListener("click", nextSpellingQuestion);
     dom.spellingDialog.addEventListener("close", () => {
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-      setSoundPulseSpeaking(false);
+      stopPronunciation();
     });
 
     dom.audioPlayButton.addEventListener("click", () => {
@@ -2584,7 +2708,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=28").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=29").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
