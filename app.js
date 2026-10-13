@@ -1901,7 +1901,8 @@
     quiz.selected = "";
     dom.quizPosition.textContent = `${quiz.index + 1} / ${quiz.entries.length}`;
     dom.quizProgressBar.style.width = `${(quiz.index / quiz.entries.length) * 100}%`;
-    dom.quizFeedback.textContent = "";
+    dom.quizFeedback.innerHTML = "";
+    dom.quizFeedback.className = "result-feedback quiz-feedback";
     dom.quizNextButton.hidden = true;
     dom.quizNextButton.textContent =
       quiz.index === quiz.entries.length - 1 ? "查看结果" : "下一题";
@@ -1909,7 +1910,9 @@
       .map(
         (meaning, index) => `
           <button class="quiz-option" type="button" data-quiz-option="${index}">
-            <strong>${String.fromCharCode(65 + index)}.</strong> ${escapeHtml(meaning)}
+            <span class="quiz-option__letter">${String.fromCharCode(65 + index)}</span>
+            <span class="quiz-option__meaning">${escapeHtml(meaning)}</span>
+            <span class="quiz-option__status"></span>
           </button>
         `,
       )
@@ -1939,12 +1942,23 @@
     dom.quizOptions.querySelectorAll(".quiz-option").forEach((button, index) => {
       button.disabled = true;
       const meaning = quiz.options[index];
-      if (meaning === entry.meaning) button.classList.add("is-correct");
-      else if (meaning === selected) button.classList.add("is-wrong");
+      const status = button.querySelector(".quiz-option__status");
+      if (meaning === entry.meaning) {
+        button.classList.add("is-correct");
+        status.textContent = correct ? "选择正确" : "正确答案";
+      } else if (meaning === selected) {
+        button.classList.add("is-wrong");
+        status.textContent = "你的选择";
+      }
     });
-    dom.quizFeedback.textContent = correct
-      ? `正确：${entry.term} · ${entry.meaning}`
-      : `正确答案：${entry.term} · ${entry.meaning}`;
+    dom.quizFeedback.classList.add(correct ? "is-correct" : "is-wrong");
+    dom.quizFeedback.innerHTML = `
+      <span class="result-feedback__icon" aria-hidden="true">${correct ? "✓" : "×"}</span>
+      <div>
+        <strong>${correct ? "回答正确" : "回答错误，正确答案已标出"}</strong>
+        <span>听到的是 <b>${escapeHtml(entry.term)}</b> · ${escapeHtml(entry.meaning)}</span>
+      </div>
+    `;
     dom.quizNextButton.hidden = false;
     saveState();
     renderOverview();
@@ -2026,9 +2040,11 @@
     dom.spellingProgressBar.style.width = `${(quiz.index / quiz.entries.length) * 100}%`;
     dom.spellingInput.value = "";
     dom.spellingInput.disabled = false;
+    dom.spellingInput.classList.remove("is-correct", "is-wrong");
+    dom.spellingInput.removeAttribute("aria-invalid");
     dom.spellingSubmitButton.disabled = false;
-    dom.spellingFeedback.textContent = "";
-    dom.spellingFeedback.className = "spelling-feedback";
+    dom.spellingFeedback.innerHTML = "";
+    dom.spellingFeedback.className = "result-feedback spelling-feedback";
     dom.spellingNextButton.hidden = true;
     dom.spellingNextButton.textContent =
       quiz.index === quiz.entries.length - 1 ? "查看结果" : "下一题";
@@ -2043,6 +2059,7 @@
     const answer = normalizedSpelling(dom.spellingInput.value);
     if (!answer) {
       dom.spellingFeedback.textContent = "先输入你听到的英文。";
+      dom.spellingFeedback.classList.add("is-warning");
       dom.spellingInput.focus();
       return;
     }
@@ -2065,11 +2082,32 @@
     }
 
     dom.spellingInput.disabled = true;
+    dom.spellingInput.classList.add(correct ? "is-correct" : "is-wrong");
+    dom.spellingInput.setAttribute("aria-invalid", String(!correct));
     dom.spellingSubmitButton.disabled = true;
+    dom.spellingFeedback.className = "result-feedback spelling-feedback";
     dom.spellingFeedback.classList.add(correct ? "is-correct" : "is-wrong");
-    dom.spellingFeedback.textContent = correct
-      ? `拼写正确：${entry.term} · ${entry.meaning}`
-      : `正确拼写：${entry.term} · ${entry.meaning}`;
+    dom.spellingFeedback.innerHTML = correct
+      ? `
+          <span class="result-feedback__icon" aria-hidden="true">✓</span>
+          <div>
+            <strong>拼写正确</strong>
+            <span><b>${escapeHtml(entry.term)}</b> · ${escapeHtml(entry.meaning)}</span>
+          </div>
+        `
+      : `
+          <span class="result-feedback__icon" aria-hidden="true">×</span>
+          <div>
+            <strong>拼写错误</strong>
+            <span class="spelling-answer-row">
+              <small>你的输入</small><del>${escapeHtml(answer)}</del>
+            </span>
+            <span class="spelling-answer-row is-answer">
+              <small>正确答案</small><b>${escapeHtml(entry.term)}</b>
+            </span>
+            <span class="spelling-answer-meaning">${escapeHtml(entry.meaning)}</span>
+          </div>
+        `;
     dom.spellingNextButton.hidden = false;
     saveState();
     renderOverview();
@@ -2708,7 +2746,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=29").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=30").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });

@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=29" />
+    <link rel="manifest" href="./manifest.webmanifest?v=30" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=29" />
+    <link rel="stylesheet" href="./styles.css?v=30" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -543,7 +543,7 @@
         <p>听发音，选择正确的中文含义</p>
       </div>
       <div class="quiz-options" id="quizOptions"></div>
-      <p class="quiz-feedback" id="quizFeedback" aria-live="polite"></p>
+      <div class="result-feedback quiz-feedback" id="quizFeedback" aria-live="polite"></div>
       <button class="primary-button quiz-next" id="quizNextButton" type="button" hidden>下一题</button>
     </dialog>
 
@@ -579,7 +579,7 @@
           <button class="primary-button" id="spellingSubmitButton" type="submit">检查拼写</button>
         </div>
       </form>
-      <p class="spelling-feedback" id="spellingFeedback" aria-live="polite"></p>
+      <div class="result-feedback spelling-feedback" id="spellingFeedback" aria-live="polite"></div>
       <button class="primary-button quiz-next" id="spellingNextButton" type="button" hidden>下一题</button>
     </dialog>
 
@@ -619,9 +619,9 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=29"></script>
+    <script src="./listening-data.js?v=30"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=29"></script>
+    <script src="./app.js?v=30"></script>
   </body>
 </html>
