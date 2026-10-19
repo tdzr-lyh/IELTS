@@ -6,6 +6,8 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from build_phrase_audio import verify_phrase_audio
+
 
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
@@ -17,6 +19,7 @@ FILES = [
     "styles.css",
     "app.js",
     "listening-data.js",
+    "phrase-audio.js",
     "manifest.webmanifest",
     "service-worker.js",
     "cloud-config.js",
@@ -33,6 +36,7 @@ def ensure_inside_root(path: Path) -> None:
 
 
 def main() -> None:
+    print(f"Verified phrase recordings: {verify_phrase_audio()}")
     ensure_inside_root(DIST)
     ensure_inside_root(ARCHIVE)
 
