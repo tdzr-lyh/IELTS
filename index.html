@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=31" />
+    <link rel="manifest" href="./manifest.webmanifest?v=32" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=31" />
+    <link rel="stylesheet" href="./styles.css?v=32" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -506,7 +506,7 @@
       <div class="dialog-word-list" id="dialogWordList"></div>
     </dialog>
 
-    <dialog class="answer-dialog" id="answerDialog">
+    <dialog class="answer-dialog" id="answerDialog" aria-labelledby="answerDialogTitle">
       <form method="dialog" class="dialog-close-row">
         <button aria-label="关闭听写答案" type="submit">×</button>
       </form>
@@ -516,13 +516,15 @@
           <h2 id="answerDialogTitle">听写答案</h2>
           <p id="answerDialogMeta">5.5 分 · 基本功听写</p>
         </div>
-        <button class="secondary-button" id="answerDialogPlay" type="button">重新播放音频</button>
       </div>
-      <div class="answer-dialog__tip">
-        <strong>建议先完成听写，再逐项核对</strong>
-        <span>答案来自你的听写教材，保留了原编号、拼写、音标与中文释义。</span>
+      <div class="answer-dialog__player" id="answerDialogPlayer"></div>
+      <div class="answer-dialog__content" id="answerDialogContent" tabindex="0" aria-label="听写答案列表">
+        <div class="answer-dialog__tip">
+          <strong>边听边核对，难点倒回 5 秒再听</strong>
+          <span>按教材编号排列，保留英文、音标与中文释义。</span>
+        </div>
+        <div class="answer-dialog__paper" id="answerDialogText"></div>
       </div>
-      <pre class="answer-dialog__paper" id="answerDialogText"></pre>
     </dialog>
 
     <dialog class="quiz-dialog" id="quizDialog">
@@ -583,24 +585,30 @@
       <button class="primary-button quiz-next" id="spellingNextButton" type="button" hidden>下一题</button>
     </dialog>
 
-    <div class="audio-dock" id="audioDock" hidden>
-      <audio
+    <audio
         id="trainingAudio"
         class="audio-dock__engine"
         preload="metadata"
         playsinline
         webkit-playsinline
-      ></audio>
-      <button class="audio-dock__play" id="audioPlayButton" type="button" aria-label="播放或暂停">▶</button>
+    ></audio>
+    <div id="audioDockHome">
+    <div class="audio-dock" id="audioDock" role="region" aria-label="听写播放器" hidden>
+      <div class="audio-dock__transport">
+        <button class="audio-dock__skip" id="audioBackButton" type="button" aria-label="后退 5 秒" title="后退 5 秒"><span aria-hidden="true">↶</span><small>5 秒</small></button>
+        <button class="audio-dock__play" id="audioPlayButton" type="button" aria-label="播放音频">▶</button>
+        <button class="audio-dock__skip" id="audioForwardButton" type="button" aria-label="前进 5 秒" title="前进 5 秒"><span aria-hidden="true">↷</span><small>5 秒</small></button>
+      </div>
       <div class="audio-dock__main">
         <div>
           <strong id="audioTitle">听写训练</strong>
           <span>正常 1×</span>
         </div>
-        <input id="audioSeek" type="range" min="0" max="1000" value="0" aria-label="音频进度" />
+        <input id="audioSeek" type="range" min="0" max="1000" value="0" aria-label="音频进度" disabled />
         <small><span id="audioCurrentTime">00:00</span> / <span id="audioDuration">--:--</span></small>
       </div>
       <button class="audio-dock__close" id="audioCloseButton" type="button" aria-label="关闭播放器">×</button>
+    </div>
     </div>
     <audio
       id="wordPronunciationAudio"
@@ -619,10 +627,10 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=31"></script>
-    <script src="./phrase-audio.js?v=31"></script>
+    <script src="./listening-data.js?v=32"></script>
+    <script src="./phrase-audio.js?v=32"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=31"></script>
+    <script src="./app.js?v=32"></script>
   </body>
 </html>

@@ -24,6 +24,7 @@
     toastTimer: null,
     deferredInstallPrompt: null,
     audioTrackId: "",
+    audioLoading: false,
     selectedAccountId: "",
     accountDialogRequired: false,
     cloudUser: null,
@@ -630,7 +631,8 @@
       "answerDialogTitle",
       "answerDialogMeta",
       "answerDialogText",
-      "answerDialogPlay",
+      "answerDialogPlayer",
+      "answerDialogContent",
       "quizDialog",
       "quizPosition",
       "quizProgressBar",
@@ -650,9 +652,12 @@
       "spellingFeedback",
       "spellingNextButton",
       "audioDock",
+      "audioDockHome",
       "trainingAudio",
       "wordPronunciationAudio",
       "audioPlayButton",
+      "audioBackButton",
+      "audioForwardButton",
       "audioTitle",
       "audioSeek",
       "audioCurrentTime",
@@ -2243,17 +2248,76 @@
     `;
   }
 
+  function parseTrackAnswers(text) {
+    const items = [];
+    const headings = [];
+    for (const line of text.split(/\r?\n/)) {
+      const matches = [...line.matchAll(/(?:^|\s)(\d{1,3})、\s*/g)];
+      if (!matches.length) {
+        const continuation = line.trim();
+        // PDF page numbers are not answer entries.
+        if (continuation && !/^\d+$/.test(continuation)) {
+          if (items.length) items[items.length - 1].text += ` ${continuation}`;
+          else headings.push(continuation);
+        }
+        continue;
+      }
+      matches.forEach((match, index) => {
+        const start = match.index + match[0].length;
+        const end = matches[index + 1]?.index ?? line.length;
+        items.push({ number: Number(match[1]), text: line.slice(start, end).trim() });
+      });
+    }
+    return { items: items.sort((a, b) => a.number - b.number), headings };
+  }
+
+  function answerEntryHtml(text) {
+    const phonetics = [...text.matchAll(/\[[^\]]*\]/g)].map((match) => match[0]);
+    const withoutPhonetics = text.replace(/\[[^\]]*\]/g, " ").trim();
+    const chineseAt = withoutPhonetics.search(/[\u3400-\u9fff（]/);
+    const english = chineseAt < 0 ? withoutPhonetics : withoutPhonetics.slice(0, chineseAt).trim();
+    const meaning = chineseAt < 0 ? "" : withoutPhonetics.slice(chineseAt).trim();
+    return `<div class="answer-item__body">
+      <strong class="answer-item__english" lang="en-GB">${escapeHtml(english)}</strong>
+      ${phonetics.length ? `<span class="answer-item__phonetic">${escapeHtml(phonetics.join(" "))}</span>` : ""}
+      ${meaning ? `<span class="answer-item__meaning">${escapeHtml(meaning)}</span>` : ""}
+    </div>`;
+  }
+
+  function renderTrackAnswers(track) {
+    const text = String(track.answerText || "").trim();
+    if (!text) {
+      dom.answerDialogText.innerHTML = '<p class="answer-empty">这组资料暂时没有可显示的文字答案。</p>';
+      return 0;
+    }
+    const { items, headings } = parseTrackAnswers(text);
+    dom.answerDialogText.innerHTML = items.length
+      ? `${headings.map((heading) => `<p class="answer-section-label">${escapeHtml(heading)}</p>`).join("")}
+        <ol class="answer-list">${items.map((item) => `
+          <li class="answer-item" value="${item.number}">
+            <span class="answer-item__number" aria-hidden="true">${String(item.number).padStart(2, "0")}</span>
+            ${answerEntryHtml(item.text)}
+          </li>`).join("")}</ol>
+        <details class="answer-original"><summary>查看教材原文</summary><pre>${escapeHtml(text)}</pre></details>`
+      : `<pre class="answer-plain">${escapeHtml(text)}</pre>`;
+    return items.length;
+  }
+
   function openTrackAnswer(trackId) {
     const track = trackMap.get(trackId);
     if (!track) return;
     runtime.answerTrackId = trackId;
     dom.answerDialogTitle.textContent = track.title;
+    const count = renderTrackAnswers(track);
     dom.answerDialogMeta.textContent = `${track.level} 分 · ${
       track.type === "basic" ? "基本功听写" : "词汇听写"
-    }`;
-    dom.answerDialogText.textContent =
-      String(track.answerText || "").trim() || "这组资料暂时没有可显示的文字答案。";
+    }${count ? ` · ${count} 项答案` : ""}`;
+    // Move only the controls into the modal top layer; keep the audio element
+    // attached in place so opening answers never interrupts mobile playback.
+    dom.answerDialogPlayer.append(dom.audioDock);
     if (!dom.answerDialog.open) dom.answerDialog.showModal();
+    loadTrack(trackId);
+    dom.answerDialogContent.scrollTop = 0;
   }
 
   function openCategory(group, categoryId) {
@@ -2324,37 +2388,41 @@
     renderBook();
   }
 
-  function playTrack(trackId) {
+  function loadTrack(trackId) {
     const track = trackMap.get(trackId);
-    if (!track) return;
-
-    if (runtime.audioTrackId === trackId && !audio.paused) {
-      audio.pause();
-      return;
-    }
-
+    if (!track) return false;
     if (runtime.audioTrackId !== trackId) {
       audio.pause();
+      runtime.audioTrackId = trackId;
+      runtime.audioLoading = false;
       audio.src = new URL(track.url, window.location.href).href;
       audio.preload = "metadata";
       audio.playbackRate = 1;
       audio.defaultPlaybackRate = 1;
       audio.load();
-      runtime.audioTrackId = trackId;
       dom.audioTitle.textContent = `${track.level} 分 · ${track.title}`;
-      dom.audioSeek.value = "0";
-      dom.audioCurrentTime.textContent = "00:00";
-      dom.audioDuration.textContent = "--:--";
     }
-
     dom.audioDock.hidden = false;
-    dom.audioPlayButton.textContent = "…";
+    renderAudioControls();
+    return true;
+  }
+
+  function playTrack(trackId) {
+    if (runtime.audioTrackId === trackId && !audio.paused) {
+      audio.pause();
+      return;
+    }
+    if (!loadTrack(trackId)) return;
+    runtime.audioLoading = true;
+    renderAudioControls();
     const playPromise = audio.play();
     if (playPromise) {
       playPromise.catch((error) => {
-        dom.audioPlayButton.textContent = "▶";
+        if (runtime.audioTrackId !== trackId || error?.name === "AbortError") return;
+        runtime.audioLoading = false;
+        renderAudioControls();
         console.warn("Audio playback failed:", error);
-        showToast("浏览器拦截了播放，请再点一次下方播放键");
+        showToast("音频暂时无法播放，请再点一次播放键");
       });
     }
   }
@@ -2366,12 +2434,35 @@
     return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
   }
 
+  function renderAudioControls() {
+    const duration = audio.duration;
+    const canSeek = Boolean(runtime.audioTrackId) && Number.isFinite(duration) && duration > 0;
+    const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    dom.audioSeek.disabled = !canSeek;
+    dom.audioSeek.value = canSeek ? String(Math.round((current / duration) * 1000)) : "0";
+    dom.audioSeek.setAttribute("aria-valuetext", `${formatTime(current)} / ${canSeek ? formatTime(duration) : "--:--"}`);
+    dom.audioCurrentTime.textContent = formatTime(current);
+    dom.audioDuration.textContent = canSeek ? formatTime(duration) : "--:--";
+    dom.audioBackButton.disabled = !canSeek || current <= 0;
+    dom.audioForwardButton.disabled = !canSeek || current >= duration;
+    dom.audioPlayButton.textContent = runtime.audioLoading ? "…" : audio.paused ? "▶" : "Ⅱ";
+    dom.audioPlayButton.setAttribute("aria-label", audio.paused ? "播放音频" : "暂停音频");
+  }
+
+  function seekAudio(seconds) {
+    if (!runtime.audioTrackId || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
+    renderAudioControls();
+  }
+
   function closeAudio() {
     audio.pause();
     audio.removeAttribute("src");
     audio.load();
     runtime.audioTrackId = "";
+    runtime.audioLoading = false;
     dom.audioDock.hidden = true;
+    renderAudioControls();
   }
 
   function exportProgress() {
@@ -2553,12 +2644,9 @@
       const entry = runtime.dialogEntries[runtime.dialogIndex];
       if (entry) speakWord(entry.term);
     });
-    dom.answerDialogPlay.addEventListener("click", () => {
-      if (!runtime.answerTrackId) return;
-      playTrack(runtime.answerTrackId);
-    });
     dom.answerDialog.addEventListener("close", () => {
       runtime.answerTrackId = "";
+      dom.audioDockHome.append(dom.audioDock);
     });
 
     dom.quizPlayButton.addEventListener("click", () => {
@@ -2585,45 +2673,36 @@
 
     dom.audioPlayButton.addEventListener("click", () => {
       if (!runtime.audioTrackId) return;
-      if (audio.paused) {
-        audio.playbackRate = 1;
-        audio.play().catch(() => showToast("音频暂时无法播放"));
-      } else audio.pause();
+      playTrack(runtime.audioTrackId);
     });
     dom.audioCloseButton.addEventListener("click", closeAudio);
+    dom.audioBackButton.addEventListener("click", () => seekAudio(audio.currentTime - 5));
+    dom.audioForwardButton.addEventListener("click", () => seekAudio(audio.currentTime + 5));
     dom.audioSeek.addEventListener("input", () => {
-      if (Number.isFinite(audio.duration)) {
-        audio.currentTime = (Number(dom.audioSeek.value) / 1000) * audio.duration;
-      }
+      seekAudio((Number(dom.audioSeek.value) / 1000) * audio.duration);
     });
     audio.addEventListener("play", () => {
       audio.playbackRate = 1;
-      dom.audioPlayButton.textContent = "Ⅱ";
+      renderAudioControls();
     });
-    audio.addEventListener("pause", () => {
-      dom.audioPlayButton.textContent = "▶";
-    });
-    audio.addEventListener("loadedmetadata", () => {
-      dom.audioDuration.textContent = formatTime(audio.duration);
-    });
-    audio.addEventListener("timeupdate", () => {
-      dom.audioCurrentTime.textContent = formatTime(audio.currentTime);
-      dom.audioSeek.value = Number.isFinite(audio.duration)
-        ? String(Math.round((audio.currentTime / audio.duration) * 1000))
-        : "0";
-    });
-    audio.addEventListener("ended", () => {
-      dom.audioPlayButton.textContent = "▶";
-      dom.audioSeek.value = "1000";
-    });
+    ["pause", "ended", "emptied"].forEach((event) => audio.addEventListener(event, () => {
+      runtime.audioLoading = false;
+      renderAudioControls();
+    }));
+    ["loadedmetadata", "durationchange", "timeupdate", "seeked"].forEach((event) =>
+      audio.addEventListener(event, renderAudioControls),
+    );
     audio.addEventListener("waiting", () => {
-      dom.audioPlayButton.textContent = "…";
+      runtime.audioLoading = !audio.paused;
+      renderAudioControls();
     });
-    audio.addEventListener("canplay", () => {
-      dom.audioPlayButton.textContent = audio.paused ? "▶" : "Ⅱ";
-    });
+    ["canplay", "playing"].forEach((event) => audio.addEventListener(event, () => {
+      runtime.audioLoading = false;
+      renderAudioControls();
+    }));
     audio.addEventListener("error", () => {
-      dom.audioPlayButton.textContent = "▶";
+      runtime.audioLoading = false;
+      renderAudioControls();
       showToast("音频加载失败，请确认网络后重新点击");
     });
 
@@ -2676,7 +2755,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=31").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=32").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
