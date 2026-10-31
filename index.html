@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=32" />
+    <link rel="manifest" href="./manifest.webmanifest?v=33" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=32" />
+    <link rel="stylesheet" href="./styles.css?v=33" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -588,7 +588,7 @@
     <audio
         id="trainingAudio"
         class="audio-dock__engine"
-        preload="metadata"
+        preload="auto"
         playsinline
         webkit-playsinline
     ></audio>
@@ -604,10 +604,17 @@
           <strong id="audioTitle">听写训练</strong>
           <span>正常 1×</span>
         </div>
-        <input id="audioSeek" type="range" min="0" max="1000" value="0" aria-label="音频进度" disabled />
+        <div class="audio-dock__timeline">
+          <div class="audio-dock__buffer" aria-hidden="true"><span id="audioBufferedBar"></span></div>
+          <input id="audioSeek" type="range" min="0" max="1000" value="0" aria-label="音频进度" disabled />
+        </div>
         <small><span id="audioCurrentTime">00:00</span> / <span id="audioDuration">--:--</span></small>
       </div>
       <button class="audio-dock__close" id="audioCloseButton" type="button" aria-label="关闭播放器">×</button>
+      <div class="audio-dock__connection">
+        <span id="audioStatus" role="status" aria-live="off">网络不稳时可先缓存整段</span>
+        <button id="audioCacheButton" type="button">缓存整段</button>
+      </div>
     </div>
     </div>
     <audio
@@ -627,10 +634,12 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=32"></script>
-    <script src="./phrase-audio.js?v=32"></script>
+    <script src="./listening-data.js?v=33"></script>
+    <script src="./phrase-audio.js?v=33"></script>
+    <script src="./recording-audio.js?v=33"></script>
+    <script src="./recording-player.js?v=33"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=32"></script>
+    <script src="./app.js?v=33"></script>
   </body>
 </html>

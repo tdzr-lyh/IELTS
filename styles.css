@@ -2527,6 +2527,68 @@ dialog::backdrop {
   accent-color: #9fcfff;
 }
 
+.audio-dock__main .audio-dock__timeline {
+  position: relative;
+  display: block;
+  margin-top: 3px;
+}
+
+.audio-dock__timeline input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin: 0;
+}
+
+.audio-dock__buffer {
+  position: absolute;
+  right: 3px;
+  bottom: -2px;
+  left: 3px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.audio-dock__buffer span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--mint);
+  transition: width 200ms ease;
+}
+
+.audio-dock__connection {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.audio-dock__connection > span {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.audio-dock__connection button {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid rgba(159, 207, 255, 0.5);
+  border-radius: 9px;
+  color: #dff2ff;
+  background: rgba(159, 207, 255, 0.12);
+  cursor: pointer;
+  font-size: 11px;
+}
+
 .audio-dock__main small {
   display: block;
   text-align: right;
@@ -3089,6 +3151,10 @@ dialog::backdrop {
     grid-column: 1 / -1;
     grid-row: 2;
     gap: 22px;
+  }
+
+  .audio-dock__connection {
+    grid-row: 3;
   }
 
   .answer-dialog__player .audio-dock__main {

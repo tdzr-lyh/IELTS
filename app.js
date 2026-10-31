@@ -24,7 +24,6 @@
     toastTimer: null,
     deferredInstallPrompt: null,
     audioTrackId: "",
-    audioLoading: false,
     selectedAccountId: "",
     accountDialogRequired: false,
     cloudUser: null,
@@ -38,6 +37,7 @@
   };
 
   let audio;
+  let recordingPlayer;
   let wordAudio;
   let cloudClient = null;
 
@@ -662,6 +662,9 @@
       "audioSeek",
       "audioCurrentTime",
       "audioDuration",
+      "audioStatus",
+      "audioCacheButton",
+      "audioBufferedBar",
       "audioCloseButton",
       "toast",
     ].forEach((id) => {
@@ -2392,15 +2395,9 @@
     const track = trackMap.get(trackId);
     if (!track) return false;
     if (runtime.audioTrackId !== trackId) {
-      audio.pause();
       runtime.audioTrackId = trackId;
-      runtime.audioLoading = false;
-      audio.src = new URL(track.url, window.location.href).href;
-      audio.preload = "metadata";
-      audio.playbackRate = 1;
-      audio.defaultPlaybackRate = 1;
-      audio.load();
       dom.audioTitle.textContent = `${track.level} 分 · ${track.title}`;
+      recordingPlayer.load(track);
     }
     dom.audioDock.hidden = false;
     renderAudioControls();
@@ -2408,23 +2405,8 @@
   }
 
   function playTrack(trackId) {
-    if (runtime.audioTrackId === trackId && !audio.paused) {
-      audio.pause();
-      return;
-    }
     if (!loadTrack(trackId)) return;
-    runtime.audioLoading = true;
-    renderAudioControls();
-    const playPromise = audio.play();
-    if (playPromise) {
-      playPromise.catch((error) => {
-        if (runtime.audioTrackId !== trackId || error?.name === "AbortError") return;
-        runtime.audioLoading = false;
-        renderAudioControls();
-        console.warn("Audio playback failed:", error);
-        showToast("音频暂时无法播放，请再点一次播放键");
-      });
-    }
+    recordingPlayer.toggle();
   }
 
   function formatTime(seconds) {
@@ -2435,9 +2417,10 @@
   }
 
   function renderAudioControls() {
-    const duration = audio.duration;
+    if (!recordingPlayer) return;
+    const duration = recordingPlayer.duration;
     const canSeek = Boolean(runtime.audioTrackId) && Number.isFinite(duration) && duration > 0;
-    const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    const current = recordingPlayer.position;
     dom.audioSeek.disabled = !canSeek;
     dom.audioSeek.value = canSeek ? String(Math.round((current / duration) * 1000)) : "0";
     dom.audioSeek.setAttribute("aria-valuetext", `${formatTime(current)} / ${canSeek ? formatTime(duration) : "--:--"}`);
@@ -2445,22 +2428,23 @@
     dom.audioDuration.textContent = canSeek ? formatTime(duration) : "--:--";
     dom.audioBackButton.disabled = !canSeek || current <= 0;
     dom.audioForwardButton.disabled = !canSeek || current >= duration;
-    dom.audioPlayButton.textContent = runtime.audioLoading ? "…" : audio.paused ? "▶" : "Ⅱ";
-    dom.audioPlayButton.setAttribute("aria-label", audio.paused ? "播放音频" : "暂停音频");
+    dom.audioPlayButton.textContent = recordingPlayer.loading && recordingPlayer.wantPlay ? "…" : recordingPlayer.wantPlay ? "Ⅱ" : "▶";
+    dom.audioPlayButton.setAttribute("aria-label", recordingPlayer.wantPlay ? "暂停音频" : "播放音频");
+    dom.audioStatus.textContent = recordingPlayer.status;
+    dom.audioCacheButton.textContent = recordingPlayer.downloading ? "取消缓存" : recordingPlayer.cached ? "已缓存 ✓" : "缓存整段";
+    dom.audioCacheButton.disabled = recordingPlayer.cached;
+    const buffered = recordingPlayer.objectUrl ? duration : current + recordingPlayer.bufferedAhead;
+    dom.audioBufferedBar.style.width = canSeek ? `${Math.min(100, (buffered / duration) * 100)}%` : "0%";
   }
 
   function seekAudio(seconds) {
-    if (!runtime.audioTrackId || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-    audio.currentTime = Math.max(0, Math.min(audio.duration, seconds));
-    renderAudioControls();
+    if (!runtime.audioTrackId || !Number.isFinite(recordingPlayer.duration) || recordingPlayer.duration <= 0) return;
+    recordingPlayer.seek(seconds);
   }
 
   function closeAudio() {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
+    recordingPlayer.close();
     runtime.audioTrackId = "";
-    runtime.audioLoading = false;
     dom.audioDock.hidden = true;
     renderAudioControls();
   }
@@ -2676,34 +2660,14 @@
       playTrack(runtime.audioTrackId);
     });
     dom.audioCloseButton.addEventListener("click", closeAudio);
-    dom.audioBackButton.addEventListener("click", () => seekAudio(audio.currentTime - 5));
-    dom.audioForwardButton.addEventListener("click", () => seekAudio(audio.currentTime + 5));
+    dom.audioBackButton.addEventListener("click", () => seekAudio(recordingPlayer.position - 5));
+    dom.audioForwardButton.addEventListener("click", () => seekAudio(recordingPlayer.position + 5));
+    dom.audioCacheButton.addEventListener("click", () => {
+      if (recordingPlayer.downloading) recordingPlayer.cancelDownload();
+      else recordingPlayer.download();
+    });
     dom.audioSeek.addEventListener("input", () => {
-      seekAudio((Number(dom.audioSeek.value) / 1000) * audio.duration);
-    });
-    audio.addEventListener("play", () => {
-      audio.playbackRate = 1;
-      renderAudioControls();
-    });
-    ["pause", "ended", "emptied"].forEach((event) => audio.addEventListener(event, () => {
-      runtime.audioLoading = false;
-      renderAudioControls();
-    }));
-    ["loadedmetadata", "durationchange", "timeupdate", "seeked"].forEach((event) =>
-      audio.addEventListener(event, renderAudioControls),
-    );
-    audio.addEventListener("waiting", () => {
-      runtime.audioLoading = !audio.paused;
-      renderAudioControls();
-    });
-    ["canplay", "playing"].forEach((event) => audio.addEventListener(event, () => {
-      runtime.audioLoading = false;
-      renderAudioControls();
-    }));
-    audio.addEventListener("error", () => {
-      runtime.audioLoading = false;
-      renderAudioControls();
-      showToast("音频加载失败，请确认网络后重新点击");
+      seekAudio((Number(dom.audioSeek.value) / 1000) * recordingPlayer.duration);
     });
 
     dom.exportButton.addEventListener("click", exportProgress);
@@ -2755,7 +2719,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=32").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=33").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
@@ -2765,12 +2729,16 @@
     cacheDom();
     audio = dom.trainingAudio;
     wordAudio = dom.wordPronunciationAudio;
-    audio.preload = "metadata";
+    audio.preload = "auto";
     audio.playbackRate = 1;
     audio.defaultPlaybackRate = 1;
     wordAudio.preload = "none";
     wordAudio.playbackRate = 1;
     wordAudio.defaultPlaybackRate = 1;
+    recordingPlayer = new window.RecordingPlayer(audio, {
+      onChange: renderAudioControls,
+      onMessage: showToast,
+    });
     bindEvents();
     const cloudRestored = await restoreCloudSession();
     if (!cloudRestored) {

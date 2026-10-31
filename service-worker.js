@@ -1,12 +1,14 @@
-const APP_CACHE = "listening-practice-book-v32";
+const APP_CACHE = "listening-practice-book-v33";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=32",
-  "./app.js?v=32",
-  "./listening-data.js?v=32",
-  "./phrase-audio.js?v=32",
-  "./manifest.webmanifest?v=32",
+  "./styles.css?v=33",
+  "./app.js?v=33",
+  "./listening-data.js?v=33",
+  "./phrase-audio.js?v=33",
+  "./recording-audio.js?v=33",
+  "./recording-player.js?v=33",
+  "./manifest.webmanifest?v=33",
   "./cloud-config.js?v=1",
   "./vendor/supabase.min.js?v=1",
   "./icons/icon-192.png",
@@ -29,7 +31,9 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== APP_CACHE)
+            // Audio downloads survive application updates; never remove other
+            // apps' caches hosted on the same GitHub Pages origin.
+            .filter((key) => key.startsWith("listening-practice-book-") && key !== APP_CACHE)
             .map((key) => caches.delete(key)),
         ),
       ),
