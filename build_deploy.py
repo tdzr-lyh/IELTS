@@ -8,6 +8,7 @@ from pathlib import Path
 
 from build_phrase_audio import verify_phrase_audio
 from build_recording_audio import verify_recording_audio
+from build_pronunciation_audio import verify_pronunciation_audio
 
 
 ROOT = Path(__file__).resolve().parent
@@ -21,6 +22,8 @@ FILES = [
     "app.js",
     "listening-data.js",
     "phrase-audio.js",
+    "pronunciation-audio.js",
+    "pronunciation-player.js",
     "recording-audio.js",
     "recording-player.js",
     "manifest.webmanifest",
@@ -40,6 +43,7 @@ def ensure_inside_root(path: Path) -> None:
 
 def main() -> None:
     print(f"Verified phrase recordings: {verify_phrase_audio()}")
+    print(f"Verified vocabulary pronunciations: {verify_pronunciation_audio()}")
     print(f"Verified optimized dictation recordings: {verify_recording_audio()}")
     ensure_inside_root(DIST)
     ensure_inside_root(ARCHIVE)

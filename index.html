@@ -11,11 +11,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="听力练习书" />
-    <link rel="manifest" href="./manifest.webmanifest?v=33" />
+    <link rel="manifest" href="./manifest.webmanifest?v=34" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <title>听力练习书 · IELTS Listening</title>
-    <link rel="stylesheet" href="./styles.css?v=33" />
+    <link rel="stylesheet" href="./styles.css?v=34" />
   </head>
   <body>
     <div class="aurora aurora--blue" aria-hidden="true"></div>
@@ -494,6 +494,7 @@
         <button class="secondary-button" id="markDialogWord" type="button">标记已学</button>
         <span id="dialogWordPosition">1 / 1</span>
       </div>
+      <p class="word-audio-hint" data-pronunciation-status="chapter">正在提前准备英音…</p>
       <div class="dialog-word-stage">
         <button id="dialogWord" type="button">landlord</button>
         <p id="dialogMeaning">房东</p>
@@ -543,6 +544,7 @@
         <div class="sound-pulse" id="quizSoundPulse" aria-hidden="true"><i></i><i></i><i></i></div>
         <button id="quizPlayButton" type="button">▶ 再听一次</button>
         <p>听发音，选择正确的中文含义</p>
+        <p class="word-audio-hint" data-pronunciation-status="quiz"></p>
       </div>
       <div class="quiz-options" id="quizOptions"></div>
       <div class="result-feedback quiz-feedback" id="quizFeedback" aria-live="polite"></div>
@@ -565,6 +567,7 @@
         <div class="sound-pulse" id="spellingSoundPulse" aria-hidden="true"><i></i><i></i><i></i></div>
         <button id="spellingPlayButton" type="button">▶ 再听一次</button>
         <p>只根据发音，输入完整的英文单词或词组</p>
+        <p class="word-audio-hint" data-pronunciation-status="quiz"></p>
       </div>
       <form class="spelling-form" id="spellingForm">
         <label for="spellingInput">你听到的是</label>
@@ -634,12 +637,14 @@
       <a href="#bookSection"><span aria-hidden="true">▤</span><small>听力书</small></a>
     </nav>
 
-    <script src="./listening-data.js?v=33"></script>
-    <script src="./phrase-audio.js?v=33"></script>
-    <script src="./recording-audio.js?v=33"></script>
-    <script src="./recording-player.js?v=33"></script>
+    <script src="./listening-data.js?v=34"></script>
+    <script src="./phrase-audio.js?v=34"></script>
+    <script src="./pronunciation-audio.js?v=34"></script>
+    <script src="./pronunciation-player.js?v=34"></script>
+    <script src="./recording-audio.js?v=34"></script>
+    <script src="./recording-player.js?v=34"></script>
     <script src="./cloud-config.js?v=1"></script>
     <script src="./vendor/supabase.min.js?v=1"></script>
-    <script src="./app.js?v=33"></script>
+    <script src="./app.js?v=34"></script>
   </body>
 </html>

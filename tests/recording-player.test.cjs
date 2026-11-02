@@ -136,3 +136,17 @@ test('autoplay restriction does not trigger retries or a full download', async (
   assert.match(player.message, /点击播放/);
   player.close();
 });
+
+test('idle recording preparation caches only the selected track and does not play it', async () => {
+  const { player, audio, track, fetches, saved } = setup();
+  await player.preloadTrack(track);
+  await player.preloadTrack(track);
+  assert.equal(fetches(), 1);
+  assert.equal(saved.size, 1);
+  assert.equal(audio.paused, true);
+  assert.equal(audio.src, '');
+  player.load(track); await flush(); await flush();
+  assert.match(audio.src, /^blob:/);
+  assert.equal(player.cached, true);
+  player.close();
+});

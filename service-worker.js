@@ -1,14 +1,16 @@
-const APP_CACHE = "listening-practice-book-v33";
+const APP_CACHE = "listening-practice-book-v34";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=33",
-  "./app.js?v=33",
-  "./listening-data.js?v=33",
-  "./phrase-audio.js?v=33",
-  "./recording-audio.js?v=33",
-  "./recording-player.js?v=33",
-  "./manifest.webmanifest?v=33",
+  "./styles.css?v=34",
+  "./app.js?v=34",
+  "./listening-data.js?v=34",
+  "./phrase-audio.js?v=34",
+  "./pronunciation-audio.js?v=34",
+  "./pronunciation-player.js?v=34",
+  "./recording-audio.js?v=34",
+  "./recording-player.js?v=34",
+  "./manifest.webmanifest?v=34",
   "./cloud-config.js?v=1",
   "./vendor/supabase.min.js?v=1",
   "./icons/icon-192.png",
@@ -51,6 +53,10 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.origin !== self.location.origin) return;
+
+  // Binary pronunciation packs have their own bounded complete-file cache.
+  // Bypass stale-while-revalidate and partial-response writes here.
+  if (/\/media\/pronunciation\/[^/]+\.bin$/.test(url.pathname)) return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(

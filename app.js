@@ -31,13 +31,11 @@
     cloudSyncRevision: 0,
     cloudDirty: false,
     cloudRefreshInFlight: false,
-    pronunciationToken: 0,
-    pronunciationAttempt: 0,
-    pronunciationTimer: null,
   };
 
   let audio;
   let recordingPlayer;
+  let pronunciationPlayer;
   let wordAudio;
   let cloudClient = null;
 
@@ -1107,6 +1105,8 @@
     dom.missionPercent.textContent = `${progress.percent}%`;
     dom.missionProgressBar.style.width = `${progress.percent}%`;
     dom.missionSteps.innerHTML = missionStepsHtml(pack);
+    pronunciationPlayer.prepare(pack.wordIds.map((id) => wordMap.get(id)?.term).filter(Boolean), "mission");
+    renderPronunciationStatus();
 
     recordPackCompletionIfNeeded();
   }
@@ -1129,6 +1129,10 @@
         <button class="secondary-button step-action" type="button" data-mark-all-words>
           ${wordsDone ? "取消全选" : "全部标记"}
         </button>
+        <div class="word-audio-prep">
+          <span data-pronunciation-status="mission">正在提前准备本组英音…</span>
+          <button type="button" data-retry-pronunciation>重新准备</button>
+        </div>
         <div class="word-checklist">
           ${pack.wordIds
             .map((id) => {
@@ -1306,6 +1310,7 @@
     const selection = previewWordsForClaim(route, size);
     const entries = selection.ids.map((id) => wordMap.get(id)).filter(Boolean);
     const track = previewTrackForClaim(route);
+    if (pronunciationPlayer) pronunciationPlayer.prepare(entries.slice(0, 5).map((entry) => entry.term), "preview");
     const quizCount = Math.min(10, entries.filter((entry) => entry.meaning).length);
     const routeCopy = {
       auto: "先场景高频，再机经词汇",
@@ -1563,151 +1568,38 @@
     );
   }
 
-  function clearPronunciationTimers() {
-    clearTimeout(runtime.pronunciationTimer);
-    runtime.pronunciationTimer = null;
-  }
-
-  function speakWithSystemVoice(word, token) {
-    if (token !== runtime.pronunciationToken) return;
-    clearPronunciationTimers();
-    setSoundPulseSpeaking(false);
-    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
-      showToast("发音服务暂时不可用，请检查网络后重试");
-      return;
+  function renderPronunciationStatus() {
+    if (!pronunciationPlayer) return;
+    const missionAudio = pronunciationPlayer.progress("mission");
+    if (recordingPlayer && missionAudio.total && missionAudio.ready === missionAudio.total && state.activePack?.trackId) {
+      recordingPlayer.preloadTrack(trackMap.get(state.activePack.trackId));
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(word);
-    const voices = window.speechSynthesis.getVoices();
-    const britishVoice = voices.find((voice) => /^en-GB/i.test(voice.lang));
-    if (!britishVoice) {
-      showToast("英式发音音源暂时不可用，请联网后重试");
-      return;
-    }
-    utterance.voice = britishVoice;
-    utterance.lang = "en-GB";
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-    utterance.onstart = () => {
-      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(true);
-    };
-    utterance.onend = () => {
-      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(false);
-    };
-    utterance.onerror = () => {
-      if (token === runtime.pronunciationToken) {
-        setSoundPulseSpeaking(false);
-        showToast("发音加载失败，请检查网络后重试");
-      }
-    };
-    window.speechSynthesis.speak(utterance);
-  }
-
-  function pronunciationSources(word) {
-    const key = word.trim().replace(/\s+/g, " ").toLowerCase().replace(/’/g, "'");
-    const encoded = encodeURIComponent(key);
-    const parts = key.match(/[A-Za-z]+(?:['’][A-Za-z]+)*|\d+(?:\.\d+)?/g) || [];
-    if (parts.length > 1) {
-      const recording = window.PHRASE_AUDIO?.locale === "en-GB"
-        ? window.PHRASE_AUDIO.clips?.[key]
-        : "";
-      // 短语始终整段合成；优先同站 MP3，禁止用单词录音拼接。
-      return [
-        recording,
-        `https://translate.google.co.uk/translate_tts?ie=UTF-8&client=tw-ob&tl=en-GB&q=${encoded}`,
-      ].filter(Boolean);
-    }
-    // 有道 type=1 为英式发音，仅用于单词。
-    return [`https://dict.youdao.com/dictvoice?audio=${encoded}&type=1`];
-  }
-
-  function playPronunciationSource(word, sources, index, token) {
-    if (token !== runtime.pronunciationToken) return;
-    if (index >= sources.length) {
-      speakWithSystemVoice(word, token);
-      return;
-    }
-    if (!wordAudio) {
-      speakWithSystemVoice(word, token);
-      return;
-    }
-    clearPronunciationTimers();
-    const attempt = ++runtime.pronunciationAttempt;
-    let advanced = false;
-    const tryNextSource = () => {
-      if (
-        advanced ||
-        token !== runtime.pronunciationToken ||
-        attempt !== runtime.pronunciationAttempt
-      ) return;
-      advanced = true;
-      clearPronunciationTimers();
-      wordAudio.pause();
-      playPronunciationSource(word, sources, index + 1, token);
-    };
-    wordAudio.pause();
-    wordAudio.src = sources[index];
-    wordAudio.currentTime = 0;
-    wordAudio.playbackRate = 1;
-    wordAudio.onplaying = () => {
-      if (token !== runtime.pronunciationToken || attempt !== runtime.pronunciationAttempt) return;
-      clearTimeout(runtime.pronunciationTimer);
-      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(true);
-    };
-    wordAudio.onwaiting = () => {
-      if (token !== runtime.pronunciationToken || attempt !== runtime.pronunciationAttempt) return;
-      clearTimeout(runtime.pronunciationTimer);
-      runtime.pronunciationTimer = setTimeout(tryNextSource, 4500);
-    };
-    wordAudio.onended = () => {
-      if (token !== runtime.pronunciationToken || attempt !== runtime.pronunciationAttempt) return;
-      clearPronunciationTimers();
-      if (token === runtime.pronunciationToken) setSoundPulseSpeaking(false);
-    };
-    wordAudio.onerror = tryNextSource;
-    runtime.pronunciationTimer = setTimeout(tryNextSource, 5500);
-    const result = wordAudio.play();
-    if (result) {
-      result.catch((error) => {
-        if (
-          token !== runtime.pronunciationToken ||
-          attempt !== runtime.pronunciationAttempt
-        ) return;
-        if (error?.name === "NotAllowedError") {
-          clearPronunciationTimers();
-          setSoundPulseSpeaking(false);
-          showToast("浏览器阻止了自动播放，请再点一次发音按钮");
-          return;
-        }
-        tryNextSource();
-      });
-    }
+    document.querySelectorAll("[data-pronunciation-status]").forEach((element) => {
+      const { ready, total } = pronunciationPlayer.progress(element.dataset.pronunciationStatus);
+      const active = pronunciationPlayer.phase === "loading" || pronunciationPlayer.phase === "error";
+      element.textContent = active
+        ? pronunciationPlayer.phase === "loading" ? "正在准备发音，重复点击不会重新下载…" : "暂未准备好，请检查网络后点“重新准备”"
+        : total && ready === total ? `本组英音已准备 ${ready}/${total} · 点击即可播放`
+          : total ? `正在提前准备英音 ${ready}/${total} · 可先学习释义` : "英式发音 · 正常 1×";
+    });
+    document.querySelectorAll("[data-speak-word]").forEach((button) => {
+      const entry = wordMap.get(button.dataset.speakWord);
+      const loading = pronunciationPlayer.phase === "loading" && entry &&
+        entry.term.trim().replace(/\s+/g, " ").toLowerCase().replace(/’/g, "'") === pronunciationPlayer.word;
+      button.textContent = loading ? "…" : "▶";
+      button.setAttribute("aria-busy", String(Boolean(loading)));
+    });
   }
 
   function stopPronunciation() {
-    runtime.pronunciationToken += 1;
-    runtime.pronunciationAttempt = 0;
-    clearPronunciationTimers();
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    if (wordAudio) {
-      wordAudio.onplaying = null;
-      wordAudio.onwaiting = null;
-      wordAudio.onended = null;
-      wordAudio.onerror = null;
-      wordAudio.pause();
-      wordAudio.removeAttribute("src");
-      wordAudio.load();
-    }
+    pronunciationPlayer?.stop();
     setSoundPulseSpeaking(false);
   }
 
   function speakWord(word) {
-    const cleanWord = String(word || "").trim();
-    if (!cleanWord) return;
-    stopPronunciation();
-    const token = runtime.pronunciationToken;
-    playPronunciationSource(cleanWord, pronunciationSources(cleanWord), 0, token);
+    if (!String(word || "").trim()) return;
+    if (recordingPlayer?.wantPlay) recordingPlayer.toggle();
+    pronunciationPlayer.play(word);
   }
 
   function quizEntriesForPack() {
@@ -1826,7 +1718,8 @@
     if (typeof dom.quizDialog.showModal === "function") dom.quizDialog.showModal();
     else dom.quizDialog.setAttribute("open", "");
     renderQuizQuestion();
-    setTimeout(() => speakWord(entries[0].term), 180);
+    pronunciationPlayer.prepare(entries.map((entry) => entry.term), "quiz");
+    speakWord(entries[0].term);
   }
 
   function renderQuizQuestion() {
@@ -1967,7 +1860,8 @@
     if (typeof dom.spellingDialog.showModal === "function") dom.spellingDialog.showModal();
     else dom.spellingDialog.setAttribute("open", "");
     renderSpellingQuestion();
-    setTimeout(() => speakWord(entries[0].term), 180);
+    pronunciationPlayer.prepare(entries.map((entry) => entry.term), "quiz");
+    speakWord(entries[0].term);
   }
 
   function renderSpellingQuestion() {
@@ -2360,6 +2254,8 @@
     runtime.dialogIndex = Math.max(0, Math.min(entries.length - 1, runtime.dialogIndex));
     const entry = entries[runtime.dialogIndex];
     const learned = Boolean(state.learned[entry.id]);
+    pronunciationPlayer.prepare(entries.slice(Math.max(0, runtime.dialogIndex - 1), runtime.dialogIndex + 5).map((item) => item.term), "chapter");
+    renderPronunciationStatus();
     dom.dialogWord.textContent = entry.term;
     dom.dialogMeaning.textContent = entry.meaning || "该词条未附中文释义";
     dom.dialogWordSource.textContent = entry.source || entry.categoryTitle || "听力资料";
@@ -2405,6 +2301,7 @@
   }
 
   function playTrack(trackId) {
+    stopPronunciation();
     if (!loadTrack(trackId)) return;
     recordingPlayer.toggle();
   }
@@ -2418,6 +2315,7 @@
 
   function renderAudioControls() {
     if (!recordingPlayer) return;
+    pronunciationPlayer?.setBusy(recordingPlayer.wantPlay || recordingPlayer.downloading);
     const duration = recordingPlayer.duration;
     const canSeek = Boolean(runtime.audioTrackId) && Number.isFinite(duration) && duration > 0;
     const current = recordingPlayer.position;
@@ -2443,6 +2341,7 @@
   }
 
   function closeAudio() {
+    stopPronunciation();
     recordingPlayer.close();
     runtime.audioTrackId = "";
     dom.audioDock.hidden = true;
@@ -2535,6 +2434,10 @@
     dom.recycleButton.addEventListener("click", recycleMission);
 
     dom.missionSteps.addEventListener("click", (event) => {
+      if (event.target.closest("[data-retry-pronunciation]")) {
+        pronunciationPlayer.prepare((state.activePack?.wordIds || []).map((id) => wordMap.get(id)?.term).filter(Boolean), "mission", true);
+        return;
+      }
       const speakButton = event.target.closest("[data-speak-word]");
       if (speakButton) {
         const entry = wordMap.get(speakButton.dataset.speakWord);
@@ -2719,7 +2622,7 @@
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator) || window.location.protocol === "file:") return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=33").catch(() => {
+      navigator.serviceWorker.register("./service-worker.js?v=34").catch(() => {
         showToast("离线组件暂未启用，不影响在线使用");
       });
     });
@@ -2735,6 +2638,11 @@
     wordAudio.preload = "none";
     wordAudio.playbackRate = 1;
     wordAudio.defaultPlaybackRate = 1;
+    pronunciationPlayer = new window.PronunciationPlayer(wordAudio, {
+      onChange: renderPronunciationStatus,
+      onMessage: showToast,
+      onSpeaking: setSoundPulseSpeaking,
+    });
     recordingPlayer = new window.RecordingPlayer(audio, {
       onChange: renderAudioControls,
       onMessage: showToast,

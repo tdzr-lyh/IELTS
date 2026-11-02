@@ -30,6 +30,8 @@
       this.retries = 0;
       this.controller = null;
       this.cacheCheck = null;
+      this.preloadId = "";
+      this.preloadController = null;
       this.lastProgressAt = performance.now();
       this.lastTime = 0;
       this.waits = [];
@@ -102,6 +104,32 @@
     }
 
     emit() { this.onChange(this); }
+
+    async preloadTrack(track) {
+      if (!track || this.track || this.preloadId === track.id || !("caches" in window) || navigator.onLine === false) return;
+      this.preloadId = track.id;
+      this.preloadController?.abort();
+      const controller = new AbortController();
+      this.preloadController = controller;
+      const timer = setTimeout(() => controller.abort(), 45000);
+      try {
+        const clip = window.RECORDING_AUDIO?.clips?.[track.id];
+        const url = new URL(clip?.url || track.url, window.location.href).href;
+        const cache = await caches.open(CACHE_NAME);
+        if (await cache.match(url)) return;
+        const response = await fetch(url, { signal: controller.signal });
+        if (response.status !== 200 || !/audio\//i.test(response.headers.get("Content-Type") || "")) return;
+        const blob = await response.blob();
+        if (controller.signal.aborted || blob.size < 512 || blob.size > MAX_BYTES || (clip && blob.size !== clip.bytes)) return;
+        await cache.put(url, new Response(blob, { headers: { "Content-Type": "audio/mpeg", "Content-Length": String(blob.size) } }));
+        const keys = await cache.keys();
+        for (const key of keys.slice(0, Math.max(0, keys.length - CACHE_LIMIT))) await cache.delete(key);
+      } catch { /* Quiet background warming; normal streaming remains available. */ }
+      finally {
+        clearTimeout(timer);
+        if (this.preloadController === controller) this.preloadController = null;
+      }
+    }
 
     get url() {
       const optimized = this.originalMode ? null : window.RECORDING_AUDIO?.clips?.[this.track?.id];
@@ -220,7 +248,7 @@
       if (Math.abs(this.audio.currentTime - this.lastTime) > 0.05) {
         this.lastTime = this.audio.currentTime;
         this.lastProgressAt = now;
-      } else if (now - this.lastProgressAt > 9000) {
+      } else if (now - this.lastProgressAt > (this.position < 0.1 && this.retries === 0 ? 4500 : 9000)) {
         this.recover();
       }
     }
@@ -403,6 +431,8 @@
     }
 
     close() {
+      this.preloadController?.abort();
+      this.preloadController = null;
       this.generation += 1;
       this.sourceVersion += 1;
       this.controller?.abort();
